@@ -88,9 +88,13 @@ final class Scheduler: ObservableObject {
     }
 
     func rescheduleAsync(shifts: [Shift], settings: Settings) async {
-        // Geofence alerts are fired live and are not part of the planned queue,
-        // so wiping pending requests here never drops one.
-        center.removeAllPendingNotificationRequests()
+        // Only the planned queue is rebuilt. Live geofence alerts and test
+        // pings are not derived from the schedule, so clearing everything here
+        // would silently cancel them whenever the app came to the foreground.
+        let stale = await center.pendingNotificationRequests()
+            .map(\.identifier)
+            .filter { !$0.hasPrefix("geo-") && !$0.hasPrefix("test-") }
+        center.removePendingNotificationRequests(withIdentifiers: stale)
 
         let occurrences = plan(shifts: shifts, settings: settings, from: Date())
         for occurrence in occurrences {
@@ -187,6 +191,74 @@ final class Scheduler: ObservableObject {
             content: content,
             trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
         try? await center.add(request)
+    }
+
+    // MARK: - Diagnostics
+
+    /// What iOS actually holds for this app, as opposed to what we believe we
+    /// queued. Drives the diagnostics card so a silent app can be explained.
+    struct Diagnostics {
+        var authorizationStatus: UNAuthorizationStatus = .notDetermined
+        var pendingCount = 0
+        var upcoming: [UpcomingAlert] = []
+
+        var isAuthorized: Bool {
+            authorizationStatus == .authorized || authorizationStatus == .provisional
+        }
+
+        var authorizationLabel: String {
+            switch authorizationStatus {
+            case .authorized: return "Allowed"
+            case .provisional: return "Quiet delivery"
+            case .denied: return "Blocked in iOS Settings"
+            case .notDetermined: return "Not asked yet"
+            case .ephemeral: return "Temporary"
+            @unknown default: return "Unknown"
+            }
+        }
+    }
+
+    struct UpcomingAlert: Identifiable {
+        let id: String
+        let label: String
+        let date: Date
+    }
+
+    func diagnostics() async -> Diagnostics {
+        let notificationSettings = await center.notificationSettings()
+        let pending = await center.pendingNotificationRequests()
+
+        let upcoming = pending.compactMap { request -> UpcomingAlert? in
+            let fire: Date?
+            switch request.trigger {
+            case let calendar as UNCalendarNotificationTrigger: fire = calendar.nextTriggerDate()
+            case let interval as UNTimeIntervalNotificationTrigger: fire = interval.nextTriggerDate()
+            default: fire = nil
+            }
+            guard let fire else { return nil }
+            return UpcomingAlert(id: request.identifier,
+                                 label: request.content.title,
+                                 date: fire)
+        }
+        .sorted { $0.date < $1.date }
+
+        return Diagnostics(authorizationStatus: notificationSettings.authorizationStatus,
+                           pendingCount: pending.count,
+                           upcoming: Array(upcoming.prefix(4)))
+    }
+
+    /// Proves end-to-end delivery without waiting for a real shift.
+    func sendTest(after seconds: TimeInterval = 10) {
+        let content = UNMutableNotificationContent()
+        content.title = "Test reminder"
+        content.body = "If you can see this, DutyPing can reach you."
+        content.sound = .default
+        content.categoryIdentifier = Self.categoryID
+
+        center.add(UNNotificationRequest(
+            identifier: "test-\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)))
     }
 
     // MARK: - Live geofence alerts
