@@ -43,6 +43,12 @@ final class Store: ObservableObject {
         commit()
     }
 
+    /// Used when one editor session spans several days at once.
+    func addShifts(_ newShifts: [Shift]) {
+        shifts.append(contentsOf: newShifts)
+        commit()
+    }
+
     func updateShift(_ shift: Shift) {
         guard let index = shifts.firstIndex(where: { $0.id == shift.id }) else { return }
         shifts[index] = shift

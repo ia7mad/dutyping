@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import UIKit
 
 // MARK: - Design tokens
 
@@ -13,6 +14,16 @@ enum Theme {
     static let gradient = LinearGradient(colors: [accent, accentSoft],
                                          startPoint: .topLeading,
                                          endPoint: .bottomTrailing)
+}
+
+enum Haptics {
+    static func tap() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
 }
 
 /// A rounded surface that adapts to light and dark automatically.
@@ -55,6 +66,7 @@ struct ContentView: View {
 
     @State private var editingShift: Shift?
     @State private var diagnostics = Scheduler.Diagnostics()
+    @State private var events: [DutyEvent] = []
     @State private var testSent = false
 
     var body: some View {
@@ -62,11 +74,14 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     header
+                    countdownCard
                     if !diagnostics.isAuthorized { permissionBanner }
                     shiftsCard
+                    pauseCard
                     timingCard
                     nagCard
                     locationCard
+                    if !events.isEmpty { historyCard }
                     diagnosticsCard
                 }
                 .padding(.horizontal, 18)
@@ -74,13 +89,16 @@ struct ContentView: View {
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $editingShift) { shift in
-                ShiftEditor(shift: shift) { saved in
-                    if store.shifts.contains(where: { $0.id == saved.id }) {
-                        store.updateShift(saved)
+                ShiftEditor(shift: shift,
+                            isNew: !store.shifts.contains { $0.id == shift.id }) { saved in
+                    if store.shifts.contains(where: { $0.id == saved[0].id }) {
+                        store.updateShift(saved[0])
                     } else {
-                        store.addShift(saved)
+                        store.addShifts(saved)
                     }
+                    Haptics.success()
                     refresh()
                 }
             }
@@ -95,25 +113,84 @@ struct ContentView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("DutyPing")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(Theme.gradient)
+        HStack(spacing: 14) {
+            Image("Logo")
+                .resizable()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 3)
 
-            Text(nextAlertSummary)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("DutyPing")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.gradient)
+                Text(store.settings.isPaused ? "Paused" : "\(diagnostics.pendingCount) reminders queued")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        .padding(.top, 12)
     }
 
-    private var nextAlertSummary: String {
-        guard let next = diagnostics.upcoming.first else {
-            return store.shifts.isEmpty ? "Add a shift to get started"
-                                        : "No reminders queued"
+    /// The hero: a live countdown so it is always obvious whether the app is
+    /// actually going to do something, and when.
+    private var countdownCard: some View {
+        Card {
+            if store.settings.isPaused, let until = store.settings.pausedUntil {
+                labelled(icon: "pause.circle.fill", tint: Theme.warn,
+                         title: "Reminders paused",
+                         detail: "Resuming \(until.formatted(date: .abbreviated, time: .shortened))")
+            } else if let next = diagnostics.upcoming.first {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("NEXT REMINDER")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(countdown(to: next.date, now: context.date))
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.gradient)
+                            .contentTransition(.numericText())
+                    }
+
+                    Text("\(next.label) · \(next.date.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                labelled(icon: "moon.zzz.fill", tint: .secondary,
+                         title: store.shifts.isEmpty ? "No shifts yet" : "Nothing queued",
+                         detail: store.shifts.isEmpty ? "Add a shift to get started"
+                                                      : "Check your shifts are enabled")
+            }
         }
-        return "Next reminder \(next.date.formatted(.relative(presentation: .named)))"
+    }
+
+    private func labelled(icon: String, tint: Color, title: String, detail: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 26))
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func countdown(to date: Date, now: Date) -> String {
+        let remaining = max(0, Int(date.timeIntervalSince(now)))
+        let days = remaining / 86400
+        let hours = (remaining % 86400) / 3600
+        let minutes = (remaining % 3600) / 60
+        let seconds = remaining % 60
+
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return String(format: "%dh %02dm", hours, minutes) }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     private var permissionBanner: some View {
@@ -145,17 +222,24 @@ struct ContentView: View {
 
             ForEach(store.shifts) { shift in
                 ShiftRow(shift: shift) {
+                    Haptics.tap()
                     editingShift = shift
                 } onToggle: { isOn in
                     var updated = shift
                     updated.isEnabled = isOn
                     store.updateShift(updated)
+                    Haptics.tap()
+                    refresh()
+                } onDelete: {
+                    store.shifts.removeAll { $0.id == shift.id }
+                    store.commit()
                     refresh()
                 }
             }
 
             Button {
                 let today = Calendar.current.component(.weekday, from: Date())
+                Haptics.tap()
                 editingShift = Shift.newDefault(weekday: today)
             } label: {
                 Label("Add shift", systemImage: "plus.circle.fill")
@@ -169,6 +253,64 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Pause
+
+    private var pauseCard: some View {
+        Card(title: "Pause", icon: "pause.circle") {
+            if store.settings.isPaused {
+                Button {
+                    store.settings.pausedUntil = nil
+                    store.commit()
+                    Haptics.success()
+                    refresh()
+                } label: {
+                    Label("Resume reminders", systemImage: "play.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Theme.good.opacity(0.15),
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .tint(Theme.good)
+            } else {
+                Text("Going off duty for a while? Mute everything without deleting your shifts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    pauseButton("1 hour", hours: 1)
+                    pauseButton("Today", hours: nil)
+                    pauseButton("1 week", hours: 24 * 7)
+                }
+            }
+        }
+    }
+
+    private func pauseButton(_ label: String, hours: Int?) -> some View {
+        Button {
+            let until: Date
+            if let hours {
+                until = Date().addingTimeInterval(Double(hours) * 3600)
+            } else {
+                // "Today" means until tomorrow morning.
+                let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                until = Calendar.current.startOfDay(for: tomorrow)
+            }
+            store.settings.pausedUntil = until
+            store.commit()
+            Haptics.success()
+            refresh()
+        } label: {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Theme.accent.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .tint(Theme.accent)
+    }
+
     // MARK: - Settings cards
 
     private var timingCard: some View {
@@ -180,7 +322,7 @@ struct ContentView: View {
             SliderRow(label: "Ask before end",
                       value: intBinding(\.checkOutLeadMinutes),
                       range: 0...60, unit: "min")
-            Text("A short delay gives you a chance to check in on your own first.")
+            Text("Set the first to 0 to be pinged the moment your shift starts.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -201,7 +343,7 @@ struct ContentView: View {
                 SliderRow(label: "Up to",
                           value: intBinding(\.nagCount),
                           range: 1...6, unit: "times")
-                Text("Tap Done on a reminder to stop that day's follow-ups.")
+                Text("Reminders carry Done and Snooze buttons — swipe down on one to see them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -222,6 +364,7 @@ struct ContentView: View {
                 Button {
                     geofence.requestAuthorization()
                     geofence.captureCurrentLocation()
+                    Haptics.tap()
                 } label: {
                     Label(store.settings.hasGeofenceLocation ? "Update to current location"
                                                              : "Use my current location",
@@ -240,7 +383,7 @@ struct ContentView: View {
                             .font(.caption.monospaced())
                     }
                     SliderRow(label: "Radius",
-                              value: doubleBinding(\.geofenceRadius),
+                              value: binding(\.geofenceRadius),
                               range: 50...500, unit: "m")
                 } else {
                     Text("No location saved yet.")
@@ -261,7 +404,38 @@ struct ContentView: View {
             store.settings.geofenceLatitude = coordinate.latitude
             store.settings.geofenceLongitude = coordinate.longitude
             store.commit()
+            Haptics.success()
             refresh()
+        }
+    }
+
+    // MARK: - History
+
+    private var historyCard: some View {
+        Card(title: "Recent", icon: "clock.arrow.circlepath") {
+            ForEach(events.prefix(6)) { event in
+                HStack(spacing: 10) {
+                    Image(systemName: event.action.icon)
+                        .font(.system(size: 14))
+                        .foregroundStyle(event.action == .done ? Theme.good : Theme.accent)
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(event.title) · \(event.action.label)")
+                            .font(.subheadline)
+                        Text(event.date.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+
+            Button("Clear history") {
+                EventLog.shared.clear()
+                withAnimation { events = [] }
+            }
+            .font(.caption)
+            .tint(.secondary)
         }
     }
 
@@ -278,14 +452,14 @@ struct ContentView: View {
                           good: geofence.isMonitoring)
             }
 
-            if !diagnostics.upcoming.isEmpty {
+            if diagnostics.upcoming.count > 1 {
                 Divider()
-                Text("NEXT UP")
+                Text("ALSO COMING UP")
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(0.8)
                     .foregroundStyle(.secondary)
 
-                ForEach(diagnostics.upcoming) { alert in
+                ForEach(diagnostics.upcoming.dropFirst()) { alert in
                     HStack {
                         Text(alert.label).font(.caption)
                         Spacer()
@@ -300,6 +474,7 @@ struct ContentView: View {
 
             Button {
                 Scheduler.shared.sendTest(after: 10)
+                Haptics.success()
                 withAnimation { testSent = true }
             } label: {
                 Label(testSent ? "Sent — lock your phone and wait 10s"
@@ -337,6 +512,7 @@ struct ContentView: View {
 
     private func reloadDiagnostics() async {
         diagnostics = await Scheduler.shared.diagnostics()
+        events = EventLog.shared.load()
     }
 
     private func binding<T>(_ keyPath: WritableKeyPath<Settings, T>) -> Binding<T> {
@@ -345,15 +521,11 @@ struct ContentView: View {
             set: { store.settings[keyPath: keyPath] = $0; store.commit(); refresh() })
     }
 
-    /// Sliders work in `Double`, settings are stored as `Int`.
+    /// Sliders work in `Double`, these settings are stored as `Int`.
     private func intBinding(_ keyPath: WritableKeyPath<Settings, Int>) -> Binding<Double> {
         Binding(
             get: { Double(store.settings[keyPath: keyPath]) },
             set: { store.settings[keyPath: keyPath] = Int($0); store.commit(); refresh() })
-    }
-
-    private func doubleBinding(_ keyPath: WritableKeyPath<Settings, Double>) -> Binding<Double> {
-        binding(keyPath)
     }
 }
 
@@ -363,6 +535,7 @@ private struct ShiftRow: View {
     let shift: Shift
     let onTap: () -> Void
     let onToggle: (Bool) -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
@@ -395,6 +568,11 @@ private struct ShiftRow: View {
                 .tint(Theme.accent)
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete shift", systemImage: "trash")
+            }
+        }
     }
 }
 
@@ -427,11 +605,16 @@ private struct SliderRow: View {
 
 struct ShiftEditor: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var draft: Shift
-    private let onSave: (Shift) -> Void
 
-    init(shift: Shift, onSave: @escaping (Shift) -> Void) {
+    @State private var draft: Shift
+    @State private var selectedDays: Set<Int>
+    private let isNew: Bool
+    private let onSave: ([Shift]) -> Void
+
+    init(shift: Shift, isNew: Bool, onSave: @escaping ([Shift]) -> Void) {
         _draft = State(initialValue: shift)
+        _selectedDays = State(initialValue: [shift.weekday])
+        self.isNew = isNew
         self.onSave = onSave
     }
 
@@ -439,12 +622,23 @@ struct ShiftEditor: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    Card(title: "Day", icon: "calendar") {
+                    Card(title: isNew ? "Days" : "Day", icon: "calendar") {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
                                   spacing: 8) {
                             ForEach(1...7, id: \.self) { day in
                                 dayChip(day)
                             }
+                        }
+
+                        if isNew {
+                            HStack(spacing: 8) {
+                                presetButton("Mon–Fri", days: [2, 3, 4, 5, 6])
+                                presetButton("Weekend", days: [1, 7])
+                                presetButton("Every day", days: Set(1...7))
+                            }
+                            Text("Pick several days to create one shift for each.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
 
@@ -472,24 +666,49 @@ struct ShiftEditor: View {
                 .padding(18)
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Shift")
+            .navigationTitle(isNew ? "New shift" : "Edit shift")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft); dismiss() }
+                    Button("Save") { save() }
                         .font(.body.weight(.semibold))
+                        .disabled(selectedDays.isEmpty)
                 }
             }
         }
     }
 
+    private func save() {
+        let days = selectedDays.sorted()
+        guard !days.isEmpty else { return }
+
+        if isNew {
+            onSave(days.map { day in
+                Shift(weekday: day, start: draft.start, end: draft.end,
+                      isEnabled: draft.isEnabled)
+            })
+        } else {
+            var updated = draft
+            updated.weekday = days[0]
+            onSave([updated])
+        }
+        dismiss()
+    }
+
     private func dayChip(_ day: Int) -> some View {
-        let selected = draft.weekday == day
+        let selected = selectedDays.contains(day)
         return Button {
-            withAnimation(.snappy) { draft.weekday = day }
+            Haptics.tap()
+            withAnimation(.snappy) {
+                if isNew {
+                    if selected { selectedDays.remove(day) } else { selectedDays.insert(day) }
+                } else {
+                    selectedDays = [day]
+                }
+            }
         } label: {
             Text(Weekday.shortName(day))
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -501,6 +720,21 @@ struct ShiftEditor: View {
                 .foregroundStyle(selected ? .white : .primary)
         }
         .buttonStyle(.plain)
+    }
+
+    private func presetButton(_ label: String, days: Set<Int>) -> some View {
+        Button {
+            Haptics.tap()
+            withAnimation(.snappy) { selectedDays = days }
+        } label: {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Theme.accent.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .tint(Theme.accent)
     }
 
     private func timeBinding(_ keyPath: WritableKeyPath<Shift, TimeOfDay>) -> Binding<Date> {

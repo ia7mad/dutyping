@@ -71,8 +71,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse) async {
-        // Both "Done" and a plain tap mean the user has seen it; either way the
-        // follow-ups have done their job.
-        Scheduler.shared.dismissSeries(for: response)
+        Scheduler.shared.handle(response: response)
     }
 }

@@ -50,7 +50,9 @@ final class Scheduler: ObservableObject {
 
     static let categoryID = "DUTY_REMINDER"
     static let doneActionID = "DUTY_DONE"
+    static let snoozeActionID = "DUTY_SNOOZE"
     private static let seriesKey = "series"
+    private static let kindKey = "kind"
     private static let housekeepingID = "housekeeping"
 
     /// One below the hard limit of 64, leaving room for the housekeeping alert.
@@ -70,8 +72,11 @@ final class Scheduler: ObservableObject {
         let done = UNNotificationAction(identifier: Self.doneActionID,
                                         title: "Done",
                                         options: [])
+        let snooze = UNNotificationAction(identifier: Self.snoozeActionID,
+                                          title: "Snooze 5 min",
+                                          options: [])
         let category = UNNotificationCategory(identifier: Self.categoryID,
-                                              actions: [done],
+                                              actions: [done, snooze],
                                               intentIdentifiers: [],
                                               options: [])
         center.setNotificationCategories([category])
@@ -96,7 +101,10 @@ final class Scheduler: ObservableObject {
             .filter { !$0.hasPrefix("geo-") && !$0.hasPrefix("test-") }
         center.removePendingNotificationRequests(withIdentifiers: stale)
 
-        let occurrences = plan(shifts: shifts, settings: settings, from: Date())
+        // A pause suppresses the planned queue entirely; nothing is scheduled
+        // until it lapses, and the next foregrounding rebuilds it.
+        let start = max(Date(), settings.pausedUntil ?? .distantPast)
+        let occurrences = plan(shifts: shifts, settings: settings, from: start)
         for occurrence in occurrences {
             guard let request = makeRequest(for: occurrence) else { continue }
             try? await center.add(request)
@@ -162,7 +170,8 @@ final class Scheduler: ObservableObject {
         content.body = occurrence.nagIndex == 0 ? occurrence.kind.firstBody : occurrence.kind.nagBody
         content.sound = .default
         content.categoryIdentifier = Self.categoryID
-        content.userInfo = [Self.seriesKey: occurrence.seriesID]
+        content.userInfo = [Self.seriesKey: occurrence.seriesID,
+                            Self.kindKey: occurrence.kind.rawValue]
 
         let parts = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute], from: occurrence.fireDate)
@@ -275,7 +284,7 @@ final class Scheduler: ObservableObject {
             content.body = index == 0 ? kind.firstBody : kind.nagBody
             content.sound = .default
             content.categoryIdentifier = Self.categoryID
-            content.userInfo = [Self.seriesKey: seriesID]
+            content.userInfo = [Self.seriesKey: seriesID, Self.kindKey: kind.rawValue]
 
             // A zero interval is rejected, so the opening alert gets one second.
             let delay = Double(index * settings.nagIntervalMinutes) * 60
@@ -287,16 +296,48 @@ final class Scheduler: ObservableObject {
         }
     }
 
-    /// Cancels the remaining follow-ups in whichever group the user acted on.
-    func dismissSeries(for response: UNNotificationResponse) {
-        guard let seriesID = response.notification.request.content.userInfo[Self.seriesKey] as? String
-        else { return }
+    /// Handles a tap or an action button: cancels the rest of that group, logs
+    /// what happened, and re-arms if the user asked for a snooze.
+    func handle(response: UNNotificationResponse) {
+        let info = response.notification.request.content.userInfo
+        let kind = info[Self.kindKey] as? String ?? ReminderKind.checkIn.rawValue
 
-        center.getPendingNotificationRequests { requests in
-            let doomed = requests
-                .map(\.identifier)
-                .filter { $0.hasPrefix("\(seriesID)#") }
-            self.center.removePendingNotificationRequests(withIdentifiers: doomed)
+        if let seriesID = info[Self.seriesKey] as? String {
+            center.getPendingNotificationRequests { requests in
+                let doomed = requests
+                    .map(\.identifier)
+                    .filter { $0.hasPrefix("\(seriesID)#") }
+                self.center.removePendingNotificationRequests(withIdentifiers: doomed)
+            }
         }
+
+        switch response.actionIdentifier {
+        case Self.snoozeActionID:
+            snooze(kind: kind, title: response.notification.request.content.title)
+            EventLog.shared.record(kind: kind, action: .snoozed)
+        case Self.doneActionID:
+            EventLog.shared.record(kind: kind, action: .done)
+        default:
+            EventLog.shared.record(kind: kind, action: .opened)
+        }
+    }
+
+    /// A snoozed reminder is a fresh one-shot, prefixed so a reschedule leaves
+    /// it alone.
+    private func snooze(kind: String, title: String, minutes: Double = 5) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = kind == ReminderKind.checkIn.rawValue
+            ? "Snoozed — did you check in?"
+            : "Snoozed — did you check out?"
+        content.sound = .default
+        content.categoryIdentifier = Self.categoryID
+        content.userInfo = [Self.seriesKey: "snoozed-\(Int(Date().timeIntervalSince1970))",
+                            Self.kindKey: kind]
+
+        center.add(UNNotificationRequest(
+            identifier: "geo-snooze-\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: minutes * 60, repeats: false)))
     }
 }

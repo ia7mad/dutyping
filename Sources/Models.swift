@@ -61,7 +61,49 @@ struct Settings: Codable {
     var geofenceLongitude: Double?
     var geofenceRadius: Double = 150
 
+    /// Reminders stay silent until this moment. Nil means active.
+    var pausedUntil: Date?
+
     var hasGeofenceLocation: Bool { geofenceLatitude != nil && geofenceLongitude != nil }
+
+    var isPaused: Bool {
+        guard let pausedUntil else { return false }
+        return pausedUntil > Date()
+    }
+}
+
+/// A reminder the user acknowledged, kept so the app can show what it caught.
+struct DutyEvent: Codable, Identifiable, Hashable {
+    enum Action: String, Codable {
+        case done
+        case snoozed
+        case opened
+
+        var label: String {
+            switch self {
+            case .done: return "Confirmed"
+            case .snoozed: return "Snoozed"
+            case .opened: return "Opened"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .done: return "checkmark.circle.fill"
+            case .snoozed: return "moon.zzz.fill"
+            case .opened: return "hand.tap.fill"
+            }
+        }
+    }
+
+    var id = UUID()
+    var date: Date
+    var kind: String
+    var action: Action
+
+    var isCheckIn: Bool { kind == ReminderKind.checkIn.rawValue }
+
+    var title: String { isCheckIn ? "Check-in" : "Check-out" }
 }
 
 enum Weekday {
