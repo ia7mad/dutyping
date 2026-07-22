@@ -7,10 +7,19 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
+
+      # XcodeGen emits the Xcode 16 project format, so the runner's default
+      # Xcode is not necessarily new enough to open it.
+      - name: Select newest Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
 
       - name: Install XcodeGen
         run: brew install xcodegen

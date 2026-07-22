@@ -4,9 +4,6 @@ options:
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
-  # Current XcodeGen defaults to the Xcode 16 project format, which the
-  # runner's Xcode cannot open. 56 is readable by Xcode 14 and up.
-  objectVersion: 56
 
 targets:
   DutyPing:
