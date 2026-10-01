@@ -13,6 +13,7 @@ SS = 4  # supersampling factor
 ROOT = Path(__file__).resolve().parent.parent
 ICONSET = ROOT / "Sources/Assets.xcassets/AppIcon.appiconset"
 LOGOSET = ROOT / "Sources/Assets.xcassets/Logo.imageset"
+MASTER = ROOT / "tools/dutyping-brand-master.png"
 
 INDIGO = (92, 107, 242)
 VIOLET = (140, 115, 250)
@@ -66,9 +67,13 @@ def draw_mark(img, size):
 
 
 def render(size, rounded=False):
-    big = size * SS
-    img = gradient(big).convert("RGBA")
-    draw_mark(img, big)
+    # The source artwork intentionally includes generous rounded-square
+    # presentation margins. Crop those before iOS applies its own icon mask so
+    # no white corners survive on the home screen.
+    source = Image.open(MASTER).convert("RGBA")
+    inset = round(source.width * 0.064)
+    img = source.crop((inset, inset, source.width - inset, source.height - inset))
+    big = img.width
 
     if rounded:
         # Only the in-app logo needs its own corners; iOS masks the app icon.
@@ -78,7 +83,7 @@ def render(size, rounded=False):
         )
         img.putalpha(mask)
 
-    return img.resize((size, size), Image.LANCZOS)
+    return img.resize((size, size), Image.Resampling.LANCZOS)
 
 
 def write_json(path, body):

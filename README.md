@@ -1,18 +1,30 @@
 # DutyPing
 
-A standalone iPhone app that reminds you to check in and out of duty. It has
-nothing to do with the fingerprint kiosk in the parent folder — no network, no
-server, no account. Everything stays on the phone.
+A private, on-device reminder assistant for iPhone. DutyPing began as a way to
+remember work check-in and check-out, and now also handles everyday personal
+reminders. There is no network, server, analytics, or account; everything stays
+on the phone.
 
 ## What it does
 
-- **Weekly schedule.** Add shifts (day, start, end). Reminders fire a few
+- **Personal reminders.** Create one-time, daily, weekday, weekly, or monthly
+  reminders with notes, categories, and an optional important priority.
+- **Quick templates.** Start common medicine, water, bill, errand, and call
+  reminders in one tap, then adjust the details.
+- **Siri and Shortcuts.** Run **Add reminder** from Siri, Spotlight, or the
+  Shortcuts app and provide the reminder title and time by voice.
+- **Weekly duty schedule.** Add shifts (day, start, end). Reminders fire a few
   minutes after a shift starts and at the end of it.
 - **Follow-ups.** If you ignore the first alert it re-asks every few minutes,
-  up to a limit you set. Tapping **Done** stops that day's remaining nags.
+  up to a limit you set. Tapping **Done** stops that occurrence's remaining
+  follow-ups; **Snooze** brings it back in ten minutes.
 - **Location.** Optionally watch a circle around your workplace and remind you
   on arrival and departure, regardless of the clock. iOS wakes the app for
   region crossings even when it isn't running.
+- **Dashboard and history.** See the next reminder countdown, notification
+  health, upcoming alerts, and what you completed or snoozed.
+- **Pause mode.** Mute everything for an hour, the rest of the day, or a week
+  without deleting any reminders.
 
 ## Building the `.ipa` without a Mac
 
@@ -47,9 +59,9 @@ by hand. Reminders already handed to iOS keep firing regardless.
 ## How scheduling works, and why it matters
 
 iOS caps an app at 64 pending local notifications. Rather than one repeating
-weekly trigger per shift, the app schedules concrete one-shot alerts across a
-rolling ~3-week horizon, newest first, truncated to fit the cap. That is what
-makes per-occurrence "Done" dismissal possible.
+trigger, the app schedules concrete one-shot alerts for shifts and personal
+reminders across a rolling horizon, ordered by fire date and truncated to fit
+the cap. That is what makes per-occurrence "Done" dismissal possible.
 
 The cost is that the queue has to be topped up. Three things do that: opening
 the app, bringing it to the foreground, and a background-refresh task. If all
@@ -63,9 +75,11 @@ automatically — the Status section shows the date reminders are covered throug
 | Path | What's in it |
 | --- | --- |
 | `project.yml` | XcodeGen spec; CI generates the `.xcodeproj` from it |
-| `Sources/Models.swift` | `Shift`, `TimeOfDay`, `Settings` |
+| `Sources/Models.swift` | Shift, reminder, schedule, and settings models |
 | `Sources/Store.swift` | JSON persistence; every write reschedules |
-| `Sources/Scheduler.swift` | Builds the notification queue |
+| `Sources/Scheduler.swift` | Builds the unified reminder queue |
 | `Sources/GeofenceManager.swift` | Workplace region monitoring |
-| `Sources/ContentView.swift` | The whole UI |
+| `Sources/ContentView.swift` | Dashboard, quick add, duty, and settings UI |
+| `Sources/ReminderViews.swift` | Reminder list and editor UI |
+| `Sources/AppIntents.swift` | Siri and Shortcuts integration |
 | `Sources/App.swift` | Entry point, notification delegate, background refresh |

@@ -54,8 +54,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let work = Task {
             let store = await Store()
             let shifts = await store.shifts
+            let reminders = await store.reminders
             let settings = await store.settings
-            await Scheduler.shared.rescheduleAsync(shifts: shifts, settings: settings)
+            await Scheduler.shared.rescheduleAsync(shifts: shifts,
+                                                   reminders: reminders,
+                                                   settings: settings)
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { work.cancel() }

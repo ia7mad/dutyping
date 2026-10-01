@@ -65,6 +65,7 @@ struct ContentView: View {
     @StateObject private var geofence = GeofenceManager.shared
 
     @State private var editingShift: Shift?
+    @State private var editingReminder: PersonalReminder?
     @State private var diagnostics = Scheduler.Diagnostics()
     @State private var events: [DutyEvent] = []
     @State private var testSent = false
@@ -76,6 +77,8 @@ struct ContentView: View {
                     header
                     countdownCard
                     if !diagnostics.isAuthorized { permissionBanner }
+                    assistantCard
+                    if !store.reminders.isEmpty { remindersCard }
                     shiftsCard
                     pauseCard
                     timingCard
@@ -97,6 +100,20 @@ struct ContentView: View {
                         store.updateShift(saved[0])
                     } else {
                         store.addShifts(saved)
+                    }
+                    Haptics.success()
+                    refresh()
+                }
+            }
+            .sheet(item: $editingReminder) { reminder in
+                ReminderEditor(
+                    reminder: reminder,
+                    isNew: !store.reminders.contains { $0.id == reminder.id }
+                ) { saved in
+                    if store.reminders.contains(where: { $0.id == saved.id }) {
+                        store.updateReminder(saved)
+                    } else {
+                        store.addReminder(saved)
                     }
                     Haptics.success()
                     refresh()
@@ -124,7 +141,9 @@ struct ContentView: View {
                 Text("DutyPing")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.gradient)
-                Text(store.settings.isPaused ? "Paused" : "\(diagnostics.pendingCount) reminders queued")
+                Text(store.settings.isPaused
+                     ? "Paused"
+                     : "Your private, on-device reminder assistant")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -161,10 +180,11 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
+                let empty = store.shifts.isEmpty && store.reminders.isEmpty
                 labelled(icon: "moon.zzz.fill", tint: .secondary,
-                         title: store.shifts.isEmpty ? "No shifts yet" : "Nothing queued",
-                         detail: store.shifts.isEmpty ? "Add a shift to get started"
-                                                      : "Check your shifts are enabled")
+                         title: empty ? "Nothing to remember yet" : "Nothing queued",
+                         detail: empty ? "Add your first reminder below"
+                                       : "Check that your reminders are enabled")
             }
         }
     }
@@ -204,7 +224,103 @@ struct ContentView: View {
                     Text("Without them this app cannot remind you of anything. Enable DutyPing in iOS Settings → Notifications.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if diagnostics.authorizationStatus == .denied {
+                        Button("Open iOS Settings") {
+                            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                            UIApplication.shared.open(url)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 3)
+                    }
                 }
+            }
+        }
+    }
+
+    // MARK: - Personal assistant
+
+    private var assistantCard: some View {
+        Card(title: "Quick add", icon: "sparkles") {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What should I remember for you?")
+                    .font(.headline)
+                Text("Create any reminder, or start with a useful template.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                Haptics.tap()
+                editingReminder = PersonalReminder.newDefault()
+            } label: {
+                Label("New reminder", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .foregroundStyle(.white)
+                    .background(Theme.gradient,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
+                    reminderTemplate("Medicine", icon: "pills.fill", category: .medicine,
+                                     title: "Take medicine", minutes: 60)
+                    reminderTemplate("Water", icon: "drop.fill", category: .health,
+                                     title: "Drink water", minutes: 30, repeatRule: .daily)
+                    reminderTemplate("Bill", icon: "creditcard.fill", category: .money,
+                                     title: "Pay bill", minutes: 24 * 60)
+                    reminderTemplate("Errand", icon: "cart.fill", category: .errands,
+                                     title: "Pick something up", minutes: 120)
+                    reminderTemplate("Call", icon: "phone.fill", category: .personal,
+                                     title: "Call someone", minutes: 60)
+                }
+            }
+        }
+    }
+
+    private func reminderTemplate(_ label: String, icon: String,
+                                  category: ReminderCategory, title: String,
+                                  minutes: Int,
+                                  repeatRule: ReminderRepeat = .never) -> some View {
+        Button {
+            Haptics.tap()
+            var reminder = PersonalReminder.newDefault(
+                date: Date().addingTimeInterval(Double(minutes) * 60))
+            reminder.title = title
+            reminder.category = category
+            reminder.repeatRule = repeatRule
+            editingReminder = reminder
+        } label: {
+            Label(label, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(category.tint.opacity(0.13), in: Capsule())
+                .foregroundStyle(category.tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var remindersCard: some View {
+        Card(title: "My reminders", icon: "bell.fill") {
+            ForEach(store.reminders) { reminder in
+                ReminderRow(reminder: reminder) {
+                    Haptics.tap()
+                    editingReminder = reminder
+                } onToggle: { isEnabled in
+                    var updated = reminder
+                    updated.isEnabled = isEnabled
+                    store.updateReminder(updated)
+                    Haptics.tap()
+                    refresh()
+                } onDelete: {
+                    withAnimation { store.deleteReminder(id: reminder.id) }
+                    refresh()
+                }
+
+                if reminder.id != store.reminders.last?.id { Divider() }
             }
         }
     }
