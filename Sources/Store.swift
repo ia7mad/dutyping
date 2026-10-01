@@ -93,6 +93,10 @@ final class Store: ObservableObject {
     }
 
     func deleteReminder(id: UUID) {
+        if let fileName = reminders.first(where: { $0.id == id })?.audioFileName,
+           let url = VoiceCaptureService.audioURL(fileName: fileName) {
+            try? FileManager.default.removeItem(at: url)
+        }
         reminders.removeAll { $0.id == id }
         commit()
     }

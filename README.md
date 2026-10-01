@@ -9,10 +9,19 @@ on the phone.
 
 - **Personal reminders.** Create one-time, daily, weekday, weekly, or monthly
   reminders with notes, categories, and an optional important priority.
+- **Voice capture.** Record a thought in Arabic or English, keep the original
+  audio locally, and turn the transcript into a reminder in seconds.
+- **Inbox.** Thoughts without a date stay safely in an inbox instead of being
+  assigned an invented time or silently discarded.
+- **Smart organization.** A built-in offline parser recognizes common Arabic
+  and English phrases such as "tomorrow", "in an hour", and "after work".
+  Optional DeepSeek support can organize more natural or complex captures into
+  titles, schedules, categories, priorities, and checklists.
 - **Quick templates.** Start common medicine, water, bill, errand, and call
   reminders in one tap, then adjust the details.
 - **Siri and Shortcuts.** Run **Add reminder** from Siri, Spotlight, or the
-  Shortcuts app and provide the reminder title and time by voice.
+  Shortcuts app, or use **Capture thought** to save something immediately
+  without deciding its time first.
 - **Weekly duty schedule.** Add shifts (day, start, end). Reminders fire a few
   minutes after a shift starts and at the end of it.
 - **Follow-ups.** If you ignore the first alert it re-asks every few minutes,
@@ -52,6 +61,7 @@ by hand. Reminders already handed to iOS keep firing regardless.
 ## Permissions to grant
 
 - **Notifications** — without this the app does nothing at all.
+- **Microphone and Speech Recognition** — only when you use voice capture.
 - **Location: Always** — only if you turn on the workplace trigger. iOS asks for
   "While Using" first and offers "Always" as a follow-up prompt, sometimes a day
   later. Accept it, or arrivals won't register while the app is closed.
@@ -82,4 +92,16 @@ automatically — the Status section shows the date reminders are covered throug
 | `Sources/ContentView.swift` | Dashboard, quick add, duty, and settings UI |
 | `Sources/ReminderViews.swift` | Reminder list and editor UI |
 | `Sources/AppIntents.swift` | Siri and Shortcuts integration |
+| `Sources/QuickCaptureView.swift` | Voice/text capture and assistant settings |
+| `Sources/VoiceCaptureService.swift` | Local audio recording and transcription |
+| `Sources/AssistantService.swift` | Local parser, Keychain, and optional DeepSeek client |
 | `Sources/App.swift` | Entry point, notification delegate, background refresh |
+
+## Optional DeepSeek setup
+
+DutyPing works without an AI account. To enable smarter organization, open
+**AI optional** on the Quick Add card, paste your own DeepSeek API key, and turn
+the assistant on. The key is stored in the iOS Keychain and is never committed
+to this repository. Only the captured text is sent to DeepSeek; recordings,
+location, history, and notification scheduling remain local. If the service is
+offline or rejects a request, DutyPing automatically uses its local parser.
