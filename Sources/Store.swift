@@ -99,7 +99,11 @@ final class Store: ObservableObject {
 
     func commit() {
         shifts.sort { ($0.weekday, $0.start.minutesFromMidnight) < ($1.weekday, $1.start.minutesFromMidnight) }
-        reminders.sort { $0.dueDate < $1.dueDate }
+        reminders.sort {
+            if $0.hasSchedule != $1.hasSchedule { return !$0.hasSchedule }
+            if !$0.hasSchedule { return $0.createdAt > $1.createdAt }
+            return $0.dueDate < $1.dueDate
+        }
         save()
         Scheduler.shared.reschedule(shifts: shifts, reminders: reminders, settings: settings)
         GeofenceManager.shared.apply(settings: settings)

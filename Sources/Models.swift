@@ -111,6 +111,13 @@ enum ReminderPriority: String, Codable, CaseIterable, Identifiable {
     var label: String { self == .important ? "Important" : "Normal" }
 }
 
+enum ReminderSource: String, Codable {
+    case manual
+    case voice
+    case siri
+    case shared
+}
+
 /// A general-purpose reminder. Repeating reminders keep their original date as
 /// an anchor so weekly and monthly rules remain predictable.
 struct PersonalReminder: Codable, Identifiable, Hashable {
@@ -123,12 +130,24 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     var priority: ReminderPriority = .normal
     var isEnabled = true
     var createdAt = Date()
+    /// Optional fields preserve compatibility with reminder files created by
+    /// older versions. A missing schedule flag means the reminder is scheduled.
+    var scheduleEnabled: Bool?
+    var audioFileName: String?
+    var checklist: [String]?
+    var source: ReminderSource?
+
+    var hasSchedule: Bool {
+        get { scheduleEnabled ?? true }
+        set { scheduleEnabled = newValue }
+    }
 
     var cleanTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var summary: String {
+        if !hasSchedule { return "Inbox · choose a time later" }
         if repeatRule == .never {
             return dueDate.formatted(date: .abbreviated, time: .shortened)
         }
@@ -137,6 +156,15 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
 
     static func newDefault(date: Date = Date().addingTimeInterval(60 * 60)) -> PersonalReminder {
         PersonalReminder(title: "", dueDate: date)
+    }
+
+    static func inbox(title: String, notes: String = "",
+                      source: ReminderSource = .manual) -> PersonalReminder {
+        var reminder = PersonalReminder(title: title, notes: notes,
+                                        dueDate: Date().addingTimeInterval(60 * 60))
+        reminder.scheduleEnabled = false
+        reminder.source = source
+        return reminder
     }
 }
 

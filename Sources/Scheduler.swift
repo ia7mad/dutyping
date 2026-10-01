@@ -176,7 +176,7 @@ final class Scheduler: ObservableObject {
     private func reminderOccurrences(reminders: [PersonalReminder], settings: Settings,
                                      from now: Date) -> [Occurrence] {
         var result: [Occurrence] = []
-        for reminder in reminders where reminder.isEnabled && !reminder.cleanTitle.isEmpty {
+        for reminder in reminders where reminder.isEnabled && reminder.hasSchedule && !reminder.cleanTitle.isEmpty {
             for base in dates(for: reminder, from: now) {
                 let stamp = Int(base.timeIntervalSince1970)
                 let notes = reminder.notes.trimmingCharacters(in: .whitespacesAndNewlines)

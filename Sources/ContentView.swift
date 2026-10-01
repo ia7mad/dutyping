@@ -63,9 +63,12 @@ struct Card<Content: View>: View {
 struct ContentView: View {
     @EnvironmentObject private var store: Store
     @StateObject private var geofence = GeofenceManager.shared
+    @ObservedObject private var assistant = AssistantConfiguration.shared
 
     @State private var editingShift: Shift?
     @State private var editingReminder: PersonalReminder?
+    @State private var showingQuickCapture = false
+    @State private var showingAssistantSettings = false
     @State private var diagnostics = Scheduler.Diagnostics()
     @State private var events: [DutyEvent] = []
     @State private var testSent = false
@@ -119,6 +122,15 @@ struct ContentView: View {
                     refresh()
                 }
             }
+            .sheet(isPresented: $showingQuickCapture) {
+                QuickCaptureView(shifts: store.shifts) { reminder in
+                    store.addReminder(reminder)
+                    refresh()
+                }
+            }
+            .sheet(isPresented: $showingAssistantSettings) {
+                AssistantSettingsView()
+            }
             .task {
                 _ = await Scheduler.shared.requestAuthorization()
                 store.commit()
@@ -143,7 +155,7 @@ struct ContentView: View {
                     .foregroundStyle(Theme.gradient)
                 Text(store.settings.isPaused
                      ? "Paused"
-                     : "Your private, on-device reminder assistant")
+                     : headerSubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -237,23 +249,29 @@ struct ContentView: View {
         }
     }
 
+    private var headerSubtitle: String {
+        let inboxCount = store.reminders.filter { !$0.hasSchedule }.count
+        if inboxCount > 0 { return "\(inboxCount) in inbox · capture before you forget" }
+        return "Your private reminder assistant"
+    }
+
     // MARK: - Personal assistant
 
     private var assistantCard: some View {
         Card(title: "Quick add", icon: "sparkles") {
             VStack(alignment: .leading, spacing: 4) {
-                Text("What should I remember for you?")
+                Text("Capture it before it slips away")
                     .font(.headline)
-                Text("Create any reminder, or start with a useful template.")
+                Text("Speak or type naturally. DutyPing will organize it without inventing missing details.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Button {
                 Haptics.tap()
-                editingReminder = PersonalReminder.newDefault()
+                showingQuickCapture = true
             } label: {
-                Label("New reminder", systemImage: "plus")
+                Label("Speak or type a thought", systemImage: "mic.fill")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -262,6 +280,33 @@ struct ContentView: View {
                                 in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
+
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.tap()
+                    editingReminder = PersonalReminder.newDefault()
+                } label: {
+                    Label("Detailed", systemImage: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Theme.accent.opacity(0.11),
+                                    in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                Button {
+                    showingAssistantSettings = true
+                } label: {
+                    Label(assistant.isEnabled && assistant.hasAPIKey ? "AI on" : "AI optional",
+                          systemImage: "brain.head.profile")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Theme.accent.opacity(0.11),
+                                    in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .tint(Theme.accent)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 9) {

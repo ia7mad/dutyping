@@ -42,6 +42,11 @@ struct ReminderRow: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.warn)
                             }
+                            if reminder.audioFileName != nil {
+                                Image(systemName: "waveform")
+                                    .font(.caption)
+                                    .foregroundStyle(reminder.category.tint)
+                            }
                         }
                         Text(reminder.summary)
                             .font(.caption)
@@ -71,12 +76,14 @@ struct ReminderRow: View {
     }
 
     private var dueTint: Color {
-        reminder.repeatRule == .never && reminder.dueDate < Date() ? Theme.warn : .secondary
+        if !reminder.hasSchedule { return Theme.warn }
+        return reminder.repeatRule == .never && reminder.dueDate < Date() ? Theme.warn : .secondary
     }
 }
 
 struct ReminderEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var audioPlayer = VoiceNotePlayer()
     @State private var draft: PersonalReminder
     private let isNew: Bool
     private let onSave: (PersonalReminder) -> Void
@@ -93,6 +100,9 @@ struct ReminderEditor: View {
             ScrollView {
                 VStack(spacing: 18) {
                     titleCard
+                    if draft.audioFileName != nil || !(draft.checklist ?? []).isEmpty {
+                        memoryCard
+                    }
                     whenCard
                     categoryCard
                     optionsCard
@@ -136,21 +146,54 @@ struct ReminderEditor: View {
 
     private var whenCard: some View {
         Card(title: "When", icon: "calendar.badge.clock") {
-            DatePicker("Date and time", selection: $draft.dueDate)
+            Toggle("Schedule a notification", isOn: scheduleBinding)
+                .tint(Theme.accent)
 
-            Divider()
+            if draft.hasSchedule {
+                Divider()
+                DatePicker("Date and time", selection: $draft.dueDate)
 
-            Picker("Repeat", selection: $draft.repeatRule) {
-                ForEach(ReminderRepeat.allCases) { rule in
-                    Text(rule.label).tag(rule)
+                Divider()
+
+                Picker("Repeat", selection: $draft.repeatRule) {
+                    ForEach(ReminderRepeat.allCases) { rule in
+                        Text(rule.label).tag(rule)
+                    }
                 }
-            }
-            .pickerStyle(.menu)
+                .pickerStyle(.menu)
 
-            if draft.repeatRule != .never {
-                Text(repeatExplanation)
+                if draft.repeatRule != .never {
+                    Text(repeatExplanation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("This stays in your inbox until you choose a time.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var memoryCard: some View {
+        Card(title: "Captured with it", icon: "paperclip") {
+            if let fileName = draft.audioFileName {
+                Button {
+                    audioPlayer.toggle(fileName: fileName)
+                } label: {
+                    Label(audioPlayer.isPlaying ? "Stop voice note" : "Play original voice note",
+                          systemImage: audioPlayer.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                        .font(.subheadline.weight(.medium))
+                }
+                .tint(Theme.accent)
+            }
+
+            if let checklist = draft.checklist, !checklist.isEmpty {
+                if draft.audioFileName != nil { Divider() }
+                ForEach(checklist, id: \.self) { item in
+                    Label(item, systemImage: "circle")
+                        .font(.subheadline)
+                }
             }
         }
     }
@@ -216,6 +259,17 @@ struct ReminderEditor: View {
         Binding(
             get: { draft.priority == .important },
             set: { draft.priority = $0 ? .important : .normal })
+    }
+
+    private var scheduleBinding: Binding<Bool> {
+        Binding(
+            get: { draft.hasSchedule },
+            set: { enabled in
+                draft.hasSchedule = enabled
+                if enabled && draft.dueDate < Date() {
+                    draft.dueDate = Date().addingTimeInterval(60 * 60)
+                }
+            })
     }
 
     private var repeatExplanation: String {

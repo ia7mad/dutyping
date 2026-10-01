@@ -34,6 +34,10 @@
 	<string>DutyPing uses your location to detect when you arrive at or leave your workplace, so it can remind you to check in and out.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>DutyPing needs background location access so it can remind you to check in and out even when the app is closed. Your location never leaves the device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DutyPing records thoughts you choose to capture so you can remember them later. Recordings stay on your device.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>DutyPing turns your spoken thoughts into reminder text so you can capture them quickly.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
