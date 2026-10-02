@@ -40,6 +40,19 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+      - name: Test Arabic reminder parsing
+        run: |
+          xcodebuild \
+            -project DutyPing.xcodeproj \
+            -scheme DutyPing \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16 Pro' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
       - name: Package .ipa
         run: |
           mkdir -p Payload

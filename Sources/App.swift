@@ -12,6 +12,9 @@ struct DutyPingApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .onOpenURL { url in
+                    Scheduler.shared.handleDeepLink(url)
+                }
         }
         .onChange(of: scenePhase) { phase in
             // Topping up on every foreground is what keeps the rolling horizon
@@ -54,8 +57,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let work = Task {
             let store = await Store()
             let shifts = await store.shifts
+            let reminders = await store.reminders
             let settings = await store.settings
-            await Scheduler.shared.rescheduleAsync(shifts: shifts, settings: settings)
+            await Scheduler.shared.rescheduleAsync(shifts: shifts,
+                                                   reminders: reminders,
+                                                   settings: settings)
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { work.cancel() }

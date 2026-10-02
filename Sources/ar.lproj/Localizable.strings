@@ -1,0 +1,244 @@
+/* General */
+"DutyPing" = "ديوتي بينغ";
+"Cancel" = "إلغاء";
+"Save" = "حفظ";
+"Done" = "تم";
+"Refresh" = "تحديث";
+"Enabled" = "مفعّل";
+"Active" = "نشط";
+"Inactive" = "غير نشط";
+"Paused" = "متوقف مؤقتًا";
+"Important" = "مهم";
+"Normal" = "عادي";
+"Personal" = "شخصي";
+"Health" = "الصحة";
+"Medicine" = "الدواء";
+"Work" = "العمل";
+"Bills" = "الفواتير";
+"Errands" = "المشاوير";
+"Never" = "بدون تكرار";
+"Every day" = "كل يوم";
+"Weekdays" = "أيام العمل";
+"Every week" = "كل أسبوع";
+"Every month" = "كل شهر";
+"Today" = "اليوم";
+"1 hour" = "ساعة";
+"1 week" = "أسبوع";
+"min" = "دقيقة";
+"times" = "مرات";
+
+/* Dashboard and capture */
+"Your private reminder assistant" = "مساعدك الشخصي للتذكير";
+"%d in inbox · capture before you forget" = "%d في الوارد · سجّلها قبل أن تنساها";
+"Quick add" = "إضافة سريعة";
+"Capture it before it slips away" = "سجّلها قبل أن تنساها";
+"Speak or type naturally. DutyPing will organize it without inventing missing details." = "تكلم أو اكتب بطبيعتك، وديوتي بينغ سيرتبها دون اختراع تفاصيل ناقصة.";
+"Speak or type a thought" = "سجّل صوتًا أو اكتب فكرة";
+"Detailed" = "تفاصيل";
+"AI on" = "الذكاء مفعّل";
+"AI optional" = "الذكاء اختياري";
+"Quick capture" = "تسجيل سريع";
+"Say it before it slips away" = "قلها قبل أن تنساها";
+"Listening… tap to stop" = "أسمعك… اضغط للإيقاف";
+"Arabic and English are supported. The original audio stays on your phone." = "يدعم العربية والإنجليزية، ويظل التسجيل الأصلي على جهازك.";
+"Speech language" = "لغة التسجيل";
+"Automatic" = "تلقائي";
+"Arabic" = "العربية";
+"English" = "الإنجليزية";
+"Or type anything…" = "أو اكتب أي شيء…";
+"Organize locally" = "رتّب محليًا";
+"Organize with AI" = "رتّب بالذكاء الاصطناعي";
+"Save to inbox — choose a time later" = "احفظ في الوارد — حدد الوقت لاحقًا";
+"If no time was mentioned, DutyPing keeps it in your inbox instead of guessing." = "إذا لم تذكر وقتًا، سيحفظه ديوتي بينغ في الوارد بدلًا من التخمين.";
+"Ready to save" = "جاهز للحفظ";
+"Save reminder" = "حفظ التذكير";
+"Start over" = "ابدأ من جديد";
+"Inbox — no time was invented" = "الوارد — لم يتم اختراع موعد";
+"Inbox · choose a time later" = "الوارد · اختر وقتًا لاحقًا";
+"Voice note" = "ملاحظة صوتية";
+"Checklist" = "قائمة مهام";
+"Shopping list" = "قائمة مشتريات";
+"Shopping" = "مشتريات";
+"Items" = "العناصر";
+"%d items" = "%d عناصر";
+"%@ · %d items" = "%@ · %d عناصر";
+"%d of %d completed" = "اكتمل %d من %d";
+"Review details" = "مراجعة التفاصيل";
+
+/* Reminder editor */
+"My reminders" = "تذكيراتي";
+"New reminder" = "تذكير جديد";
+"Edit reminder" = "تعديل التذكير";
+"Delete reminder" = "حذف التذكير";
+"Reminder" = "التذكير";
+"What should I remind you about?" = "بماذا تريد أن أذكرك؟";
+"Notes (optional)" = "ملاحظات (اختياري)";
+"Captured with it" = "المرفقات";
+"Play original voice note" = "تشغيل التسجيل الأصلي";
+"Stop voice note" = "إيقاف التسجيل";
+"When" = "الموعد";
+"Schedule a notification" = "جدولة إشعار";
+"Date and time" = "التاريخ والوقت";
+"Repeat" = "التكرار";
+"This stays in your inbox until you choose a time." = "سيبقى في الوارد حتى تختار له وقتًا.";
+"Repeats every day at the selected time." = "يتكرر يوميًا في الوقت المحدد.";
+"Repeats on weekdays, using your region's weekend." = "يتكرر في أيام العمل حسب عطلة منطقتك.";
+"Repeats every %@." = "يتكرر كل %@.";
+"Repeats on day %d of each month." = "يتكرر في اليوم %d من كل شهر.";
+"Category" = "التصنيف";
+"Options" = "الخيارات";
+"Reminder enabled" = "التذكير مفعّل";
+"Delivered as a time-sensitive notification" = "يصل كإشعار حساس للوقت";
+
+/* Templates */
+"Water" = "الماء";
+"Bill" = "فاتورة";
+"Errand" = "مشوار";
+"Call" = "اتصال";
+"Take medicine" = "خذ الدواء";
+"Drink water" = "اشرب الماء";
+"Pay bill" = "ادفع الفاتورة";
+"Pick something up" = "أحضر الأغراض";
+"Call someone" = "اتصل بشخص";
+
+/* Duty */
+"Shifts" = "الشفتات";
+"No shifts yet." = "لا توجد شفتات بعد.";
+"Add shift" = "إضافة شفت";
+"New shift" = "شفت جديد";
+"Edit shift" = "تعديل الشفت";
+"Delete shift" = "حذف الشفت";
+"Days" = "الأيام";
+"Day" = "اليوم";
+"Hours" = "الساعات";
+"Start" = "البداية";
+"End" = "النهاية";
+"ends next day" = "ينتهي في اليوم التالي";
+"This shift ends the next morning." = "ينتهي هذا الشفت في صباح اليوم التالي.";
+" (next day)" = " (اليوم التالي)";
+"Mon–Fri" = "الاثنين–الجمعة";
+"Weekend" = "عطلة الأسبوع";
+"Pick several days to create one shift for each." = "اختر عدة أيام لإنشاء شفت لكل يوم.";
+"Timing" = "توقيت الدوام";
+"Ask after start" = "ذكّر بعد البداية";
+"Ask before end" = "ذكّر قبل النهاية";
+"Set the first to 0 to be pinged the moment your shift starts." = "ضع القيمة 0 للتذكير لحظة بداية الشفت.";
+"You're on duty" = "بدأ دوامك";
+"Shift over" = "انتهى الشفت";
+"Did you check in?" = "هل سجلت الحضور؟";
+"Did you check out?" = "هل سجلت الانصراف؟";
+"Still haven't checked in." = "ما زلت لم تؤكد تسجيل الحضور.";
+"Still haven't checked out." = "ما زلت لم تؤكد تسجيل الانصراف.";
+"Check-in" = "الحضور";
+"Check-out" = "الانصراف";
+"Arrived at work" = "وصلت إلى العمل";
+"Left work" = "غادرت العمل";
+
+/* Follow-ups */
+"Follow-ups" = "المتابعة";
+"Keep nagging" = "استمر بالتذكير";
+"Keep active until confirmed" = "استمر حتى أؤكد التنفيذ";
+"Uses expanding follow-ups so the reminder stays with you for hours." = "يكرر التنبيه بفترات متدرجة حتى يبقى معك لساعات.";
+"Repeats at your interval first, then spreads out so it stays active for hours." = "يكرر حسب المدة التي اخترتها أولًا، ثم يتباعد ليبقى نشطًا لساعات.";
+"Repeat every" = "التكرار كل";
+"Up to" = "بحد أقصى";
+"Reminders carry Done and Snooze buttons — swipe down on one to see them." = "تحتوي الإشعارات على زري تأكيد وتأجيل — اسحب الإشعار لأسفل لإظهارهما.";
+"Confirm done" = "تأكيد التنفيذ";
+"Snooze 10 min" = "تأجيل ١٠ دقائق";
+"Confirmed" = "تم التأكيد";
+"Snoozed" = "تم التأجيل";
+"Opened" = "تم الفتح";
+"This reminder is still waiting for you." = "هذا التذكير ما زال ينتظر تأكيدك.";
+"You asked me to remind you." = "طلبت مني أن أذكرك بهذا.";
+"Still waiting: %@" = "ما زال بانتظارك: %@";
+"Snoozed — %@" = "مؤجل — %@";
+
+/* Pause and location */
+"Pause" = "إيقاف مؤقت";
+"Reminders paused" = "التذكيرات متوقفة مؤقتًا";
+"Resume reminders" = "استئناف التذكيرات";
+"Going off duty for a while? Mute everything without deleting your shifts." = "في إجازة؟ أوقف جميع التذكيرات دون حذف الشفتات.";
+"Workplace" = "موقع العمل";
+"Remind me on arrival and exit" = "ذكّرني عند الوصول والمغادرة";
+"Use my current location" = "استخدم موقعي الحالي";
+"Update to current location" = "تحديث إلى موقعي الحالي";
+"Saved" = "محفوظ";
+"Radius" = "نطاق الموقع";
+"No location saved yet." = "لم يتم حفظ موقع بعد.";
+"Grant \"Always\" location so arrivals register while the app is closed." = "اسمح بالوصول الدائم للموقع حتى يعمل التذكير والتطبيق مغلق.";
+
+/* Status */
+"NEXT REMINDER" = "التذكير القادم";
+"Nothing to remember yet" = "لا توجد تذكيرات بعد";
+"Add your first reminder below" = "أضف أول تذكير من الأسفل";
+"Nothing queued" = "لا توجد تنبيهات مجدولة";
+"Check that your reminders are enabled" = "تأكد أن التذكيرات مفعّلة";
+"Recent" = "الأحدث";
+"Clear history" = "مسح السجل";
+"Status" = "الحالة";
+"Permission" = "الإذن";
+"Queued alerts" = "التنبيهات المجدولة";
+"Workplace watch" = "مراقبة موقع العمل";
+"ALSO COMING UP" = "قادمة أيضًا";
+"Send a test reminder" = "إرسال تذكير تجريبي";
+"Sent — lock your phone and wait 10s" = "تم الإرسال — اقفل الجهاز وانتظر ١٠ ثوانٍ";
+"Open iOS Settings" = "فتح إعدادات iOS";
+"Without them this app cannot remind you of anything. Enable DutyPing in iOS Settings → Notifications." = "بدون الإشعارات لن يستطيع التطبيق تذكيرك. فعّل إشعارات ديوتي بينغ من إعدادات iOS.";
+"Allowed" = "مسموح";
+"Quiet delivery" = "توصيل هادئ";
+"Blocked in iOS Settings" = "محظور في إعدادات iOS";
+"Not asked yet" = "لم يُطلب الإذن بعد";
+"Temporary" = "مؤقت";
+"Unknown" = "غير معروف";
+"Test reminder" = "تذكير تجريبي";
+"If you can see this, DutyPing can reach you." = "إذا ظهر هذا التنبيه فديوتي بينغ يستطيع الوصول إليك.";
+"Open the app to extend your reminder schedule." = "افتح التطبيق لتمديد جدول التذكيرات.";
+
+/* Assistant */
+"Assistant settings" = "إعدادات المساعد";
+"Smart assistant" = "المساعد الذكي";
+"Use DeepSeek to organize captures" = "استخدم DeepSeek لترتيب التسجيلات";
+"AI only receives the text you capture. Audio, location, reminder history, and notification scheduling stay on your iPhone." = "يستقبل الذكاء الاصطناعي النص فقط. يبقى الصوت والموقع والسجل وجدولة الإشعارات على جهازك.";
+"DeepSeek API key" = "مفتاح DeepSeek API";
+"Key saved in Keychain" = "المفتاح محفوظ في Keychain";
+"Save key" = "حفظ المفتاح";
+"Remove saved key" = "حذف المفتاح المحفوظ";
+"Saved securely" = "تم الحفظ بأمان";
+"Key removed" = "تم حذف المفتاح";
+"Create or manage a DeepSeek API key" = "إنشاء أو إدارة مفتاح DeepSeek";
+"DutyPing always falls back to its local Arabic/English parser if AI is disabled, offline, or unavailable." = "يعود ديوتي بينغ تلقائيًا للتحليل المحلي العربي والإنجليزي إذا تعطل الذكاء الاصطناعي أو انقطع الإنترنت.";
+"Add your DeepSeek API key in Assistant settings." = "أضف مفتاح DeepSeek من إعدادات المساعد.";
+"The assistant returned an answer I couldn't understand." = "أعاد المساعد نتيجة لم أستطع فهمها.";
+
+/* Voice errors */
+"Microphone access is required to record a thought." = "يلزم السماح بالميكروفون لتسجيل الفكرة.";
+"Recording audio only; speech recognition is unavailable." = "سيتم حفظ الصوت فقط لأن تحويل الكلام غير متاح حاليًا.";
+"Couldn't start recording: %@" = "تعذر بدء التسجيل: %@";
+
+/* Siri and Shortcuts */
+"Add a DutyPing reminder" = "إضافة تذكير في ديوتي بينغ";
+"Creates a private personal reminder in DutyPing." = "ينشئ تذكيرًا شخصيًا خاصًا في ديوتي بينغ.";
+"Reminder" = "التذكير";
+"Tell me what you want to remember." = "قل لي ما الذي تريد تذكره.";
+"Capture a thought in DutyPing" = "تسجيل فكرة في ديوتي بينغ";
+"Saves something to your DutyPing inbox before you forget it." = "يحفظ الفكرة في وارد ديوتي بينغ قبل أن تنساها.";
+"What do you want to remember?" = "ما الذي تريد تذكره؟";
+"Saved to your DutyPing inbox." = "تم الحفظ في وارد ديوتي بينغ.";
+"Add reminder" = "إضافة تذكير";
+"Capture thought" = "تسجيل فكرة";
+
+/* Weekdays */
+"Sunday" = "الأحد";
+"Monday" = "الاثنين";
+"Tuesday" = "الثلاثاء";
+"Wednesday" = "الأربعاء";
+"Thursday" = "الخميس";
+"Friday" = "الجمعة";
+"Saturday" = "السبت";
+"Sun" = "أحد";
+"Mon" = "اثن";
+"Tue" = "ثلا";
+"Wed" = "أرب";
+"Thu" = "خمي";
+"Fri" = "جمع";
+"Sat" = "سبت";

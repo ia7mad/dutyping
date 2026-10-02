@@ -86,11 +86,15 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         guard region.identifier == Self.regionID else { return }
-        Scheduler.shared.fireNow(kind: .checkIn, reason: "Arrived at work", settings: settings)
+        Scheduler.shared.fireNow(kind: .checkIn,
+                                 reason: String(localized: "Arrived at work"),
+                                 settings: settings)
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         guard region.identifier == Self.regionID else { return }
-        Scheduler.shared.fireNow(kind: .checkOut, reason: "Left work", settings: settings)
+        Scheduler.shared.fireNow(kind: .checkOut,
+                                 reason: String(localized: "Left work"),
+                                 settings: settings)
     }
 }

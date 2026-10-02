@@ -6,6 +6,7 @@ import Combine
 @MainActor
 final class Store: ObservableObject {
     @Published var shifts: [Shift] = []
+    @Published var reminders: [PersonalReminder] = []
     @Published var settings = Settings()
 
     private static var fileURL: URL {
@@ -15,7 +16,25 @@ final class Store: ObservableObject {
 
     private struct Payload: Codable {
         var shifts: [Shift]
+        var reminders: [PersonalReminder]
         var settings: Settings
+
+        enum CodingKeys: String, CodingKey {
+            case shifts, reminders, settings
+        }
+
+        init(shifts: [Shift], reminders: [PersonalReminder], settings: Settings) {
+            self.shifts = shifts
+            self.reminders = reminders
+            self.settings = settings
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            shifts = try container.decodeIfPresent([Shift].self, forKey: .shifts) ?? []
+            reminders = try container.decodeIfPresent([PersonalReminder].self, forKey: .reminders) ?? []
+            settings = try container.decodeIfPresent(Settings.self, forKey: .settings) ?? Settings()
+        }
     }
 
     init() { load() }
@@ -24,11 +43,12 @@ final class Store: ObservableObject {
         guard let data = try? Data(contentsOf: Self.fileURL),
               let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return }
         shifts = payload.shifts
+        reminders = payload.reminders
         settings = payload.settings
     }
 
     func save() {
-        let payload = Payload(shifts: shifts, settings: settings)
+        let payload = Payload(shifts: shifts, reminders: reminders, settings: settings)
         guard let data = try? JSONEncoder().encode(payload) else { return }
         try? data.write(to: Self.fileURL, options: .atomic)
     }
@@ -61,10 +81,35 @@ final class Store: ObservableObject {
         commit()
     }
 
+    func addReminder(_ reminder: PersonalReminder) {
+        reminders.append(reminder)
+        commit()
+    }
+
+    func updateReminder(_ reminder: PersonalReminder) {
+        guard let index = reminders.firstIndex(where: { $0.id == reminder.id }) else { return }
+        reminders[index] = reminder
+        commit()
+    }
+
+    func deleteReminder(id: UUID) {
+        if let fileName = reminders.first(where: { $0.id == id })?.audioFileName,
+           let url = VoiceCaptureService.audioURL(fileName: fileName) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        reminders.removeAll { $0.id == id }
+        commit()
+    }
+
     func commit() {
         shifts.sort { ($0.weekday, $0.start.minutesFromMidnight) < ($1.weekday, $1.start.minutesFromMidnight) }
+        reminders.sort {
+            if $0.hasSchedule != $1.hasSchedule { return !$0.hasSchedule }
+            if !$0.hasSchedule { return $0.createdAt > $1.createdAt }
+            return $0.dueDate < $1.dueDate
+        }
         save()
-        Scheduler.shared.reschedule(shifts: shifts, settings: settings)
+        Scheduler.shared.reschedule(shifts: shifts, reminders: reminders, settings: settings)
         GeofenceManager.shared.apply(settings: settings)
     }
 }
