@@ -10,6 +10,7 @@ struct QuickCaptureView: View {
 
     @State private var text = ""
     @State private var preview: PersonalReminder?
+    @State private var editingPreview: PersonalReminder?
     @State private var isOrganizing = false
     @State private var saved = false
     @AppStorage("capture.speechLanguage") private var speechLanguage = "auto"
@@ -39,6 +40,11 @@ struct QuickCaptureView: View {
             }
             .onDisappear {
                 if !saved { voice.discardRecording() }
+            }
+            .sheet(item: $editingPreview) { reminder in
+                ReminderEditor(reminder: reminder, isNew: true) { edited in
+                    preview = edited
+                }
             }
         }
     }
@@ -144,9 +150,20 @@ struct QuickCaptureView: View {
             Text(reminder.cleanTitle)
                 .font(.headline)
 
-            Label(reminder.category.label, systemImage: reminder.category.icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(reminder.category.tint)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    detectedChip(reminder.contentType.label,
+                                 icon: reminder.contentType.icon,
+                                 tint: reminder.category.tint)
+                    detectedChip(reminder.category.label,
+                                 icon: reminder.category.icon,
+                                 tint: Theme.accent)
+                    if let checklist = reminder.checklist {
+                        detectedChip(String(format: String(localized: "%d items"), checklist.count),
+                                     icon: "number", tint: .secondary)
+                    }
+                }
+            }
 
             if reminder.hasSchedule {
                 Label(reminder.summary, systemImage: "calendar.badge.clock")
@@ -160,10 +177,22 @@ struct QuickCaptureView: View {
             if let checklist = reminder.checklist, !checklist.isEmpty {
                 Divider()
                 ForEach(checklist, id: \.self) { item in
-                    Label(item, systemImage: "circle")
+                    Label(item, systemImage: "checkmark.circle")
                         .font(.subheadline)
                 }
             }
+
+            Button {
+                editingPreview = reminder
+            } label: {
+                Label("Review details", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(Theme.accent.opacity(0.11),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .tint(Theme.accent)
 
             Button {
                 finish(reminder)
@@ -185,6 +214,16 @@ struct QuickCaptureView: View {
             .tint(.secondary)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private func detectedChip(_ text: String, icon: String, tint: Color) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.1), in: Capsule())
+            .lineLimit(1)
     }
 
     private func messageCard(_ message: String) -> some View {

@@ -41,6 +41,7 @@ private struct Occurrence {
     let nagIndex: Int
     let eventTitle: String?
     let isImportant: Bool
+    let repeatIntervalMinutes: Int
 }
 
 /// Maintains the local notification queue for shifts and personal reminders.
@@ -184,10 +185,9 @@ final class Scheduler: ObservableObject {
         for reminder in reminders where reminder.isEnabled && reminder.hasSchedule && !reminder.cleanTitle.isEmpty {
             for base in dates(for: reminder, from: now) {
                 let stamp = Int(base.timeIntervalSince1970)
-                let notes = reminder.notes.trimmingCharacters(in: .whitespacesAndNewlines)
                 result += series(kind: .personal,
                                  title: reminder.cleanTitle,
-                                 body: notes.isEmpty ? reminder.category.label : notes,
+                                 body: reminder.notificationDetail,
                                  followUpBody: String(format: String(localized: "Still waiting: %@"),
                                                       reminder.cleanTitle),
                                  base: base,
@@ -246,7 +246,9 @@ final class Scheduler: ObservableObject {
             return Occurrence(kind: kind, title: title, body: body,
                               followUpBody: followUpBody, fireDate: fire,
                               seriesID: seriesID, nagIndex: index,
-                              eventTitle: eventTitle, isImportant: isImportant)
+                              eventTitle: eventTitle, isImportant: isImportant,
+                              repeatIntervalMinutes: settings.nagEnabled
+                                ? max(1, settings.nagIntervalMinutes) : 0)
         }
     }
 
@@ -261,7 +263,8 @@ final class Scheduler: ObservableObject {
 
         var info: [AnyHashable: Any] = [
             Self.seriesKey: occurrence.seriesID,
-            Self.kindKey: occurrence.kind.rawValue
+            Self.kindKey: occurrence.kind.rawValue,
+            "repeatIntervalMinutes": occurrence.repeatIntervalMinutes
         ]
         if let eventTitle = occurrence.eventTitle { info[Self.titleKey] = eventTitle }
         content.userInfo = info
@@ -367,7 +370,10 @@ final class Scheduler: ObservableObject {
             content.sound = .default
             content.badge = 1
             content.categoryIdentifier = Self.categoryID
-            content.userInfo = [Self.seriesKey: seriesID, Self.kindKey: kind.rawValue]
+            content.userInfo = [Self.seriesKey: seriesID,
+                                Self.kindKey: kind.rawValue,
+                                "repeatIntervalMinutes": settings.nagEnabled
+                                    ? max(1, settings.nagIntervalMinutes) : 0]
             let delay = Double(delayMinutes) * 60
             center.add(UNNotificationRequest(
                 identifier: "\(seriesID)#\(index)",

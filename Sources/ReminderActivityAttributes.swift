@@ -6,6 +6,7 @@ struct ReminderActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var dueDate: Date
         var isCompleted: Bool
+        var repeatIntervalMinutes: Int
     }
 
     var seriesID: String

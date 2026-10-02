@@ -34,6 +34,11 @@ on the phone.
 - **Full Arabic experience.** The interface, notification actions, voice
   capture, and offline parsing support Arabic, including spoken shopping lists
   such as "جيب حليب وخبز وبطاريات".
+- **Structured capture.** A sentence such as "ذكرني بأغراض البقاله، رز، بصل،
+  ثوم، عصير، الساعة 4:10 م" becomes a scheduled shopping list with a clean
+  title, category, item count, and individually checkable items.
+- **At-a-glance timing.** The Lock Screen and Dynamic Island show the reminder
+  timer, follow-up interval, and confirmation state.
 - **Location.** Optionally watch a circle around your workplace and remind you
   on arrival and departure, regardless of the clock. iOS wakes the app for
   region crossings even when it isn't running.

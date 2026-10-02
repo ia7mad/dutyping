@@ -1,3 +1,4 @@
 "Waiting for confirmation" = "بانتظار التأكيد";
 "Waiting for your confirmation" = "بانتظار تأكيدك";
 "Confirm" = "تأكيد";
+"Repeats every %d min until confirmed" = "يتكرر كل %d دقيقة حتى التأكيد";

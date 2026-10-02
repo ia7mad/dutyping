@@ -23,7 +23,8 @@ final class LiveActivityManager {
             where activity.attributes.seriesID == seriesID {
                 let final = ReminderActivityAttributes.ContentState(
                     dueDate: activity.content.state.dueDate,
-                    isCompleted: true)
+                    isCompleted: true,
+                    repeatIntervalMinutes: activity.content.state.repeatIntervalMinutes)
                 await activity.end(ActivityContent(state: final, staleDate: nil),
                                    dismissalPolicy: .immediate)
             }
@@ -44,7 +45,8 @@ final class LiveActivityManager {
                              kind: request.content.userInfo["kind"] as? String ?? "personal",
                              title: request.content.userInfo["eventTitle"] as? String
                                 ?? request.content.title,
-                             fireDate: fire)
+                             fireDate: fire,
+                             repeatIntervalMinutes: request.content.userInfo["repeatIntervalMinutes"] as? Int ?? 0)
         }
         .sorted { $0.fireDate < $1.fireDate }
 
@@ -56,7 +58,8 @@ final class LiveActivityManager {
         let current = Activity<ReminderActivityAttributes>.activities
         if let matching = current.first(where: { $0.attributes.seriesID == next.seriesID }) {
             let state = ReminderActivityAttributes.ContentState(
-                dueDate: next.fireDate, isCompleted: false)
+                dueDate: next.fireDate, isCompleted: false,
+                repeatIntervalMinutes: next.repeatIntervalMinutes)
             await matching.update(ActivityContent(state: state,
                                                   staleDate: next.fireDate.addingTimeInterval(8 * 3600)))
             return
@@ -70,7 +73,8 @@ final class LiveActivityManager {
                                                     title: next.title,
                                                     kind: next.kind)
         let state = ReminderActivityAttributes.ContentState(
-            dueDate: next.fireDate, isCompleted: false)
+            dueDate: next.fireDate, isCompleted: false,
+            repeatIntervalMinutes: next.repeatIntervalMinutes)
         _ = try? Activity.request(
             attributes: attributes,
             content: ActivityContent(state: state,
@@ -83,5 +87,6 @@ final class LiveActivityManager {
         let kind: String
         let title: String
         let fireDate: Date
+        let repeatIntervalMinutes: Int
     }
 }

@@ -52,6 +52,14 @@ struct ReminderRow: View {
                             .font(.caption)
                             .foregroundStyle(dueTint)
                             .lineLimit(1)
+                        if let checklist = reminder.checklist, !checklist.isEmpty {
+                            Label(String(format: String(localized: "%@ · %d items"),
+                                         reminder.contentType.label, checklist.count),
+                                  systemImage: reminder.contentType.icon)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(reminder.category.tint)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer()
                 }
@@ -195,9 +203,36 @@ struct ReminderEditor: View {
 
             if let checklist = draft.checklist, !checklist.isEmpty {
                 if draft.audioFileName != nil { Divider() }
-                ForEach(checklist, id: \.self) { item in
-                    Label(item, systemImage: "circle")
-                        .font(.subheadline)
+                HStack {
+                    Label(draft.contentType.label, systemImage: draft.contentType.icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(draft.category.tint)
+                    Spacer()
+                    if let progress = draft.checklistProgress {
+                        Text(progress)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(Array(checklist.enumerated()), id: \.offset) { _, item in
+                    let completed = draft.completedItems.contains(item)
+                    Button {
+                        var items = draft.completedItems
+                        if completed { items.remove(item) } else { items.insert(item) }
+                        draft.completedItems = items
+                        Haptics.tap()
+                    } label: {
+                        HStack {
+                            Image(systemName: completed ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(completed ? Theme.good : .secondary)
+                            Text(item)
+                                .strikethrough(completed)
+                                .foregroundStyle(completed ? .secondary : .primary)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

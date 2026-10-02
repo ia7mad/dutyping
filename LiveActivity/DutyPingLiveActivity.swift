@@ -30,16 +30,23 @@ struct DutyPingLiveActivity: Widget {
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(timerInterval: Date()...max(context.state.dueDate, Date()),
-                         countsDown: true)
+                    Text(context.state.dueDate, style: .timer)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack {
-                        Label("Waiting for confirmation", systemImage: "exclamationmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("Waiting for confirmation", systemImage: "exclamationmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            if context.state.repeatIntervalMinutes > 0 {
+                                Text(String(format: String(localized: "Repeats every %d min until confirmed"),
+                                            context.state.repeatIntervalMinutes))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         Spacer()
                         Link(destination: context.attributes.completionURL) {
                             Label("Confirm", systemImage: "checkmark.circle.fill")
@@ -57,7 +64,8 @@ struct DutyPingLiveActivity: Widget {
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } compactTrailing: {
-                Image(systemName: "checkmark.circle")
+                Text(context.state.dueDate, style: .timer)
+                    .font(.caption2.monospacedDigit())
                     .foregroundStyle(.orange)
             } minimal: {
                 Image("Logo")
@@ -92,12 +100,23 @@ struct DutyPingLiveActivity: Widget {
                 Text("Waiting for your confirmation")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.7))
+                if context.state.repeatIntervalMinutes > 0 {
+                    Text(String(format: String(localized: "Repeats every %d min until confirmed"),
+                                context.state.repeatIntervalMinutes))
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.62))
+                }
             }
             Spacer()
-            Link(destination: context.attributes.completionURL) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(.mint)
+            VStack(spacing: 5) {
+                Text(context.state.dueDate, style: .timer)
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(.white)
+                Link(destination: context.attributes.completionURL) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 34))
+                        .foregroundStyle(.mint)
+                }
             }
         }
         .padding(16)

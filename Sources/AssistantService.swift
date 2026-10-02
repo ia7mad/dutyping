@@ -197,18 +197,36 @@ private enum DeepSeekClient {
 enum LocalReminderParser {
     static func organize(_ rawText: String, shifts: [Shift]) -> PersonalReminder {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var reminder = PersonalReminder.inbox(title: compactTitle(text), notes: text, source: .voice)
+        let items = checklist(from: text)
+        var reminder = PersonalReminder.inbox(title: title(from: text, hasChecklist: items != nil),
+                                              notes: text, source: .voice)
         reminder.category = category(for: text)
         reminder.priority = containsAny(text, ["مهم", "ضروري", "عاجل", "urgent", "important"])
             ? .important : .normal
         reminder.repeatRule = repeatRule(for: text)
-        reminder.checklist = checklist(from: text)
+        reminder.checklist = items
 
         if let date = relativeDate(in: text) ?? dateAfterDuty(in: text, shifts: shifts) {
             reminder.dueDate = date
             reminder.scheduleEnabled = true
         }
         return reminder
+    }
+
+    private static func title(from text: String, hasChecklist: Bool) -> String {
+        var first = text.components(separatedBy: CharacterSet(charactersIn: ",،\n")).first ?? text
+        first = replacing(pattern: "^(?:ذك(?:ّ)?رني|remind me(?: to)?)\\s*(?:ب)?",
+                          in: first, with: "")
+        first = replacing(
+            pattern: "\\s*(?:اليوم|بكرة|غد(?:ا|اً))?\\s*(?:الساعة|الساعه|at)\\s*\\d{1,2}(?::\\d{1,2})?\\s*(?:ص|صباح|م|مساء|am|pm)?\\s*$",
+            in: first, with: "")
+        first = first.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        if first.isEmpty, hasChecklist {
+            return text.range(of: "[\\p{Arabic}]", options: .regularExpression) != nil
+                ? "أغراض البقالة" : "Shopping list"
+        }
+        return compactTitle(first.isEmpty ? text : first)
+            .replacingOccurrences(of: "البقاله", with: "البقالة")
     }
 
     private static func compactTitle(_ text: String) -> String {
@@ -221,7 +239,10 @@ enum LocalReminderParser {
         if containsAny(text, ["تمرين", "ماء", "اشرب", "صحة", "موعد طبي", "health"]) { return .health }
         if containsAny(text, ["فاتورة", "سداد", "ادفع", "بنك", "bill", "pay"]) { return .money }
         if containsAny(text, ["دوام", "عمل", "اجتماع", "مدير", "work", "meeting"]) { return .work }
-        if containsAny(text, ["اشتري", "أشتري", "جيب", "اغراض", "أغراض", "سوق", "buy", "shopping"]) { return .errands }
+        if containsAny(text, ["اشتري", "أشتري", "جيب", "اغراض", "أغراض", "بقالة", "بقاله",
+                              "سوبرماركت", "مشتريات", "قائمة", "سوق", "buy", "shopping", "grocery"]) {
+            return .errands
+        }
         return .personal
     }
 
@@ -258,14 +279,19 @@ enum LocalReminderParser {
         let calendar = Calendar.current
         let isTomorrow = containsAny(normalized, ["بكرة", "غدا", "غداً", "tomorrow"])
         let isToday = containsAny(normalized, ["اليوم", "today"])
-        guard isTomorrow || isToday else { return nil }
+        let explicitHour = clockHour(in: normalized)
+        guard isTomorrow || isToday || explicitHour != nil else { return nil }
         let base = isTomorrow
             ? calendar.date(byAdding: .day, value: 1, to: now) ?? now
             : now
-        let hour = clockHour(in: normalized) ?? (isTomorrow ? 9 : calendar.component(.hour, from: now) + 1)
+        let hour = explicitHour ?? (isTomorrow ? 9 : calendar.component(.hour, from: now) + 1)
         let minute = clockMinute(in: normalized) ?? 0
-        return calendar.date(bySettingHour: min(hour, 23), minute: minute,
-                             second: 0, of: base)
+        guard var result = calendar.date(bySettingHour: min(hour, 23), minute: minute,
+                                         second: 0, of: base) else { return nil }
+        if !isToday && !isTomorrow && result <= now {
+            result = calendar.date(byAdding: .day, value: 1, to: result) ?? result
+        }
+        return result
     }
 
     private static func dateAfterDuty(in text: String, shifts: [Shift]) -> Date? {
@@ -290,19 +316,36 @@ enum LocalReminderParser {
     }
 
     private static func checklist(from text: String) -> [String]? {
-        let commands = ["اشتري", "أشتري", "جيب", "قائمة", "اغراض", "أغراض", "buy", "get"]
+        let commands = ["اشتري", "أشتري", "جيب", "قائمة", "اغراض", "أغراض", "مشتريات",
+                        "بقالة", "بقاله", "سوبرماركت", "buy", "get", "shopping", "grocery"]
         guard let command = commands.first(where: { text.localizedCaseInsensitiveContains($0) }) else {
             return nil
         }
-        let listStart = text.range(of: command, options: [.caseInsensitive])?.upperBound ?? text.startIndex
-        var listText = String(text[listStart...])
+        var listText: String
+        if let separator = text.firstIndex(where: { $0 == "," || $0 == "،" }) {
+            let heading = String(text[..<separator])
+            let genericHeading = containsAny(heading, ["أغراض البقالة", "أغراض البقاله", "اغراض البقالة",
+                                                        "اغراض البقاله", "قائمة", "مشتريات",
+                                                        "shopping list", "grocery list"])
+            if genericHeading {
+                listText = String(text[text.index(after: separator)...])
+            } else {
+                let listStart = text.range(of: command, options: [.caseInsensitive])?.upperBound
+                    ?? text.startIndex
+                listText = String(text[listStart...])
+            }
+        } else {
+            let listStart = text.range(of: command, options: [.caseInsensitive])?.upperBound
+                ?? text.startIndex
+            listText = String(text[listStart...])
+        }
         let separator = try? NSRegularExpression(pattern: "[,،\\n]|\\s+و(?=\\S)")
         listText = separator?.stringByReplacingMatches(
             in: listText,
             range: NSRange(listText.startIndex..., in: listText),
             withTemplate: "|") ?? listText
         let timingWords = try? NSRegularExpression(
-            pattern: "\\s+(?:بكرة|غد(?:ا|اً)|اليوم|بعد الدوام|tomorrow|today|after work).*$",
+            pattern: "(?:\\s+)?(?:بكرة|غد(?:ا|اً)|اليوم|بعد الدوام|tomorrow|today|after work)?\\s*(?:الساعة|الساعه|at)\\s*\\d{1,2}(?::\\d{1,2})?\\s*(?:ص|صباح|م|مساء|am|pm)?.*$|\\s+(?:بكرة|غد(?:ا|اً)|اليوم|بعد الدوام|tomorrow|today|after work).*$",
             options: [.caseInsensitive])
         let pieces = listText.split(separator: "|")
             .map { part -> String in
@@ -314,7 +357,7 @@ enum LocalReminderParser {
             }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        return pieces.count > 1 ? pieces : nil
+        return pieces.isEmpty ? nil : pieces
     }
 
     private static func clockHour(in text: String) -> Int? {
@@ -346,6 +389,16 @@ enum LocalReminderParser {
     private static func firstMatch(pattern: String, in text: String) -> NSTextCheckingResult? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
         return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+
+    private static func replacing(pattern: String, in text: String,
+                                  with template: String) -> String {
+        guard let expression = try? NSRegularExpression(pattern: pattern,
+                                                        options: [.caseInsensitive]) else {
+            return text
+        }
+        return expression.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: template)
     }
 
     private static func westernDigits(_ text: String) -> String {

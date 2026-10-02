@@ -119,6 +119,28 @@ enum ReminderPriority: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ReminderContentType: Equatable {
+    case reminder
+    case checklist
+    case shopping
+
+    var label: String {
+        switch self {
+        case .reminder: return String(localized: "Reminder")
+        case .checklist: return String(localized: "Checklist")
+        case .shopping: return String(localized: "Shopping list")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .reminder: return "bell.fill"
+        case .checklist: return "checklist"
+        case .shopping: return "cart.fill"
+        }
+    }
+}
+
 enum ReminderSource: String, Codable {
     case manual
     case voice
@@ -143,6 +165,7 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     var scheduleEnabled: Bool?
     var audioFileName: String?
     var checklist: [String]?
+    var completedChecklistItems: [String]?
     var source: ReminderSource?
 
     var hasSchedule: Bool {
@@ -152,6 +175,32 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
 
     var cleanTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var contentType: ReminderContentType {
+        guard let checklist, !checklist.isEmpty else { return .reminder }
+        return category == .errands ? .shopping : .checklist
+    }
+
+    var completedItems: Set<String> {
+        get { Set(completedChecklistItems ?? []) }
+        set { completedChecklistItems = Array(newValue) }
+    }
+
+    var checklistProgress: String? {
+        guard let checklist, !checklist.isEmpty else { return nil }
+        return String(format: String(localized: "%d of %d completed"),
+                      completedItems.count, checklist.count)
+    }
+
+    var notificationDetail: String {
+        guard let checklist, !checklist.isEmpty else {
+            let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleanNotes.isEmpty ? category.label : cleanNotes
+        }
+        let prefix = contentType == .shopping
+            ? String(localized: "Shopping") : String(localized: "Items")
+        return "\(prefix): \(checklist.joined(separator: "، "))"
     }
 
     var summary: String {

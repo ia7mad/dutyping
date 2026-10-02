@@ -56,6 +56,14 @@
 "Inbox — no time was invented" = "الوارد — لم يتم اختراع موعد";
 "Inbox · choose a time later" = "الوارد · اختر وقتًا لاحقًا";
 "Voice note" = "ملاحظة صوتية";
+"Checklist" = "قائمة مهام";
+"Shopping list" = "قائمة مشتريات";
+"Shopping" = "مشتريات";
+"Items" = "العناصر";
+"%d items" = "%d عناصر";
+"%@ · %d items" = "%@ · %d عناصر";
+"%d of %d completed" = "اكتمل %d من %d";
+"Review details" = "مراجعة التفاصيل";
 
 /* Reminder editor */
 "My reminders" = "تذكيراتي";
