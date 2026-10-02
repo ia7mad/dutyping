@@ -41,7 +41,7 @@ struct DutyPingLiveActivity: Widget {
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                             if context.state.repeatIntervalMinutes > 0 {
-                                Text(String(format: String(localized: "Repeats every %d min until confirmed"),
+                                Text(String(format: String(localized: "Every %d min first · until confirmed"),
                                             context.state.repeatIntervalMinutes))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -101,7 +101,7 @@ struct DutyPingLiveActivity: Widget {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.7))
                 if context.state.repeatIntervalMinutes > 0 {
-                    Text(String(format: String(localized: "Repeats every %d min until confirmed"),
+                    Text(String(format: String(localized: "Every %d min first · until confirmed"),
                                 context.state.repeatIntervalMinutes))
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.62))

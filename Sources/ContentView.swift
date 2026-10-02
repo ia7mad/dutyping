@@ -516,7 +516,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Keep active until confirmed")
                             .font(.subheadline.weight(.medium))
-                        Text("Uses expanding follow-ups so the reminder stays with you for hours.")
+                        Text("Repeats at your interval first, then spreads out so it stays active for hours.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

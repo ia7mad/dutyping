@@ -127,13 +127,24 @@ final class Scheduler: ObservableObject {
 
     private func plan(shifts: [Shift], reminders: [PersonalReminder],
                       settings: Settings, from now: Date) -> [Occurrence] {
-        var result = shiftOccurrences(shifts: shifts, settings: settings, from: now)
-        result += reminderOccurrences(reminders: reminders, settings: settings, from: now)
-        result.sort {
+        var all = shiftOccurrences(shifts: shifts, settings: settings, from: now)
+        all += reminderOccurrences(reminders: reminders, settings: settings, from: now)
+        all.sort {
             if $0.fireDate == $1.fireDate { return $0.isImportant && !$1.isImportant }
             return $0.fireDate < $1.fireDate
         }
-        return Array(result.prefix(maxPending))
+
+        // Reserve roughly half the system queue for first alerts. Without this,
+        // a one-minute follow-up series could crowd out check-out or tomorrow's
+        // important reminders. Remaining slots go to the nearest follow-ups.
+        let firstAlertBudget = min(maxPending, maxPending / 2)
+        let firstAlerts = Array(all.filter { $0.nagIndex == 0 }.prefix(firstAlertBudget))
+        let coveredSeries = Set(firstAlerts.map(\.seriesID))
+        let followUps = all.filter {
+            $0.nagIndex > 0 && coveredSeries.contains($0.seriesID)
+        }
+        let selected = firstAlerts + followUps.prefix(max(0, maxPending - firstAlerts.count))
+        return selected.sorted { $0.fireDate < $1.fireDate }
     }
 
     private func shiftOccurrences(shifts: [Shift], settings: Settings,
@@ -454,9 +465,12 @@ final class Scheduler: ObservableObject {
         guard settings.nagEnabled else { return [0] }
         let interval = max(1, settings.nagIntervalMinutes)
         if settings.persistentFollowUps {
-            // Expanding intervals keep the reminder alive for hours without
-            // consuming the entire 64-notification allowance immediately.
-            return [0, 1, 3, 6, 12, 24, 48, 96].map { $0 * interval }
+            // Repeat at the exact selected interval first, then keep a sparse
+            // safety tail. iOS only allows 64 pending local notifications, so
+            // an infinite per-minute queue isn't possible without a server.
+            let regular = Array(0...15)
+            let safetyTail = [20, 30, 45, 60, 90, 120, 180, 240, 360, 480]
+            return (regular + safetyTail).map { $0 * interval }
         }
         return (0...max(0, settings.nagCount)).map { $0 * interval }
     }

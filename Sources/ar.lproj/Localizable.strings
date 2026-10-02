@@ -139,6 +139,7 @@
 "Keep nagging" = "استمر بالتذكير";
 "Keep active until confirmed" = "استمر حتى أؤكد التنفيذ";
 "Uses expanding follow-ups so the reminder stays with you for hours." = "يكرر التنبيه بفترات متدرجة حتى يبقى معك لساعات.";
+"Repeats at your interval first, then spreads out so it stays active for hours." = "يكرر حسب المدة التي اخترتها أولًا، ثم يتباعد ليبقى نشطًا لساعات.";
 "Repeat every" = "التكرار كل";
 "Up to" = "بحد أقصى";
 "Reminders carry Done and Snooze buttons — swipe down on one to see them." = "تحتوي الإشعارات على زري تأكيد وتأجيل — اسحب الإشعار لأسفل لإظهارهما.";
