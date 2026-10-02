@@ -8,8 +8,8 @@ enum AssistantError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: return "Add your DeepSeek API key in Assistant settings."
-        case .invalidResponse: return "The assistant returned an answer I couldn't understand."
+        case .missingAPIKey: return String(localized: "Add your DeepSeek API key in Assistant settings.")
+        case .invalidResponse: return String(localized: "The assistant returned an answer I couldn't understand.")
         case .service(let message): return message
         }
     }
@@ -290,11 +290,28 @@ enum LocalReminderParser {
     }
 
     private static func checklist(from text: String) -> [String]? {
-        guard containsAny(text, ["اشتري", "أشتري", "جيب", "قائمة", "اغراض", "أغراض", "buy", "get"]) else {
+        let commands = ["اشتري", "أشتري", "جيب", "قائمة", "اغراض", "أغراض", "buy", "get"]
+        guard let command = commands.first(where: { text.localizedCaseInsensitiveContains($0) }) else {
             return nil
         }
-        let pieces = text.components(separatedBy: CharacterSet(charactersIn: "،,\n"))
-            .flatMap { $0.components(separatedBy: " و ") }
+        let listStart = text.range(of: command, options: [.caseInsensitive])?.upperBound ?? text.startIndex
+        var listText = String(text[listStart...])
+        let separator = try? NSRegularExpression(pattern: "[,،\\n]|\\s+و(?=\\S)")
+        listText = separator?.stringByReplacingMatches(
+            in: listText,
+            range: NSRange(listText.startIndex..., in: listText),
+            withTemplate: "|") ?? listText
+        let timingWords = try? NSRegularExpression(
+            pattern: "\\s+(?:بكرة|غد(?:ا|اً)|اليوم|بعد الدوام|tomorrow|today|after work).*$",
+            options: [.caseInsensitive])
+        let pieces = listText.split(separator: "|")
+            .map { part -> String in
+                let value = String(part)
+                return timingWords?.stringByReplacingMatches(
+                    in: value,
+                    range: NSRange(value.startIndex..., in: value),
+                    withTemplate: "") ?? value
+            }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return pieces.count > 1 ? pieces : nil

@@ -12,6 +12,9 @@ struct DutyPingApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .onOpenURL { url in
+                    Scheduler.shared.handleDeepLink(url)
+                }
         }
         .onChange(of: scenePhase) { phase in
             // Topping up on every foreground is what keeps the rolling horizon

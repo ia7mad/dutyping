@@ -181,8 +181,13 @@ struct ReminderEditor: View {
                 Button {
                     audioPlayer.toggle(fileName: fileName)
                 } label: {
-                    Label(audioPlayer.isPlaying ? "Stop voice note" : "Play original voice note",
-                          systemImage: audioPlayer.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                    Label {
+                        Text(L10n.text(audioPlayer.isPlaying
+                                       ? "Stop voice note" : "Play original voice note"))
+                    } icon: {
+                        Image(systemName: audioPlayer.isPlaying
+                              ? "stop.circle.fill" : "play.circle.fill")
+                    }
                         .font(.subheadline.weight(.medium))
                 }
                 .tint(Theme.accent)
@@ -275,10 +280,14 @@ struct ReminderEditor: View {
     private var repeatExplanation: String {
         switch draft.repeatRule {
         case .never: return ""
-        case .daily: return "Repeats every day at the selected time."
-        case .weekdays: return "Repeats on weekdays, using your region's weekend."
-        case .weekly: return "Repeats every \(draft.dueDate.formatted(.dateTime.weekday(.wide)))."
-        case .monthly: return "Repeats on day \(Calendar.current.component(.day, from: draft.dueDate)) of each month."
+        case .daily: return String(localized: "Repeats every day at the selected time.")
+        case .weekdays: return String(localized: "Repeats on weekdays, using your region's weekend.")
+        case .weekly:
+            return String(format: String(localized: "Repeats every %@."),
+                          draft.dueDate.formatted(.dateTime.weekday(.wide)))
+        case .monthly:
+            return String(format: String(localized: "Repeats on day %d of each month."),
+                          Calendar.current.component(.day, from: draft.dueDate))
         }
     }
 }

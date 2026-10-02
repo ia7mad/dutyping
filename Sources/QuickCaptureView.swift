@@ -12,6 +12,7 @@ struct QuickCaptureView: View {
     @State private var preview: PersonalReminder?
     @State private var isOrganizing = false
     @State private var saved = false
+    @AppStorage("capture.speechLanguage") private var speechLanguage = "auto"
 
     var body: some View {
         NavigationStack {
@@ -62,7 +63,7 @@ struct QuickCaptureView: View {
                 .contentShape(Circle())
                 .onTapGesture {
                     Haptics.tap()
-                    Task { await voice.toggle() }
+                    Task { await voice.toggle(localeIdentifier: selectedSpeechLocale) }
                 }
 
                 VStack(spacing: 4) {
@@ -73,6 +74,13 @@ struct QuickCaptureView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
+
+                Picker("Speech language", selection: $speechLanguage) {
+                    Text("Automatic").tag("auto")
+                    Text("Arabic").tag("ar-SA")
+                    Text("English").tag("en-US")
+                }
+                .pickerStyle(.segmented)
 
                 TextField("Or type anything…", text: $text, axis: .vertical)
                     .lineLimit(3...7)
@@ -90,9 +98,12 @@ struct QuickCaptureView: View {
             } label: {
                 HStack {
                     if isOrganizing { ProgressView().tint(.white) }
-                    Label(assistant.isEnabled && assistant.hasAPIKey
-                          ? "Organize with AI" : "Organize locally",
-                          systemImage: "wand.and.stars")
+                    Label {
+                        Text(L10n.text(assistant.isEnabled && assistant.hasAPIKey
+                                       ? "Organize with AI" : "Organize locally"))
+                    } icon: {
+                        Image(systemName: "wand.and.stars")
+                    }
                 }
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity)
@@ -188,6 +199,10 @@ struct QuickCaptureView: View {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var selectedSpeechLocale: String? {
+        speechLanguage == "auto" ? nil : speechLanguage
+    }
+
     private func organize() {
         guard !cleanText.isEmpty else { return }
         if voice.isRecording { voice.stop() }
@@ -250,7 +265,8 @@ struct AssistantSettingsView: View {
                     }
 
                     Card(title: "DeepSeek API key", icon: "key.fill") {
-                        SecureField(configuration.hasAPIKey ? "Key saved in Keychain" : "sk-…",
+                        SecureField(configuration.hasAPIKey
+                                    ? L10n.text("Key saved in Keychain") : "sk-…",
                                     text: $key)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -260,7 +276,9 @@ struct AssistantSettingsView: View {
 
                         Button("Save key") {
                             if configuration.saveAPIKey(key) {
-                                savedMessage = key.isEmpty ? "Key removed" : "Saved securely"
+                                savedMessage = key.isEmpty
+                                    ? String(localized: "Key removed")
+                                    : String(localized: "Saved securely")
                                 key = ""
                                 if configuration.hasAPIKey { configuration.isEnabled = true }
                                 Haptics.success()
@@ -271,7 +289,7 @@ struct AssistantSettingsView: View {
                         if configuration.hasAPIKey {
                             Button("Remove saved key", role: .destructive) {
                                 _ = configuration.saveAPIKey("")
-                                savedMessage = "Key removed"
+                                savedMessage = String(localized: "Key removed")
                             }
                             .font(.caption)
                         }

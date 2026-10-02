@@ -24,9 +24,16 @@ on the phone.
   without deciding its time first.
 - **Weekly duty schedule.** Add shifts (day, start, end). Reminders fire a few
   minutes after a shift starts and at the end of it.
-- **Follow-ups.** If you ignore the first alert it re-asks every few minutes,
-  up to a limit you set. Tapping **Done** stops that occurrence's remaining
-  follow-ups; **Snooze** brings it back in ten minutes.
+- **Persistent follow-ups.** Keep a reminder active with expanding follow-ups
+  until you explicitly confirm it. Tapping **Confirm done** permanently closes
+  that occurrence; merely opening the notification does not. **Snooze** brings
+  it back in ten minutes.
+- **Live Activity.** The next nearby reminder appears on the Lock Screen and,
+  on supported iPhones, in the Dynamic Island with the DutyPing logo and a
+  one-tap confirmation action.
+- **Full Arabic experience.** The interface, notification actions, voice
+  capture, and offline parsing support Arabic, including spoken shopping lists
+  such as "جيب حليب وخبز وبطاريات".
 - **Location.** Optionally watch a circle around your workplace and remind you
   on arrival and departure, regardless of the clock. iOS wakes the app for
   region crossings even when it isn't running.
@@ -88,6 +95,8 @@ automatically — the Status section shows the date reminders are covered throug
 | `Sources/Models.swift` | Shift, reminder, schedule, and settings models |
 | `Sources/Store.swift` | JSON persistence; every write reschedules |
 | `Sources/Scheduler.swift` | Builds the unified reminder queue |
+| `Sources/LiveActivityManager.swift` | Starts and closes the next local Live Activity |
+| `LiveActivity/` | Lock Screen and Dynamic Island presentation |
 | `Sources/GeofenceManager.swift` | Workplace region monitoring |
 | `Sources/ContentView.swift` | Dashboard, quick add, duty, and settings UI |
 | `Sources/ReminderViews.swift` | Reminder list and editor UI |

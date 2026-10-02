@@ -17,18 +17,18 @@ final class VoiceCaptureService: NSObject, ObservableObject {
     private var audioFile: AVAudioFile?
     private var tapInstalled = false
 
-    func toggle() async {
-        if isRecording { stop() } else { await start() }
+    func toggle(localeIdentifier: String? = nil) async {
+        if isRecording { stop() } else { await start(localeIdentifier: localeIdentifier) }
     }
 
-    func start() async {
+    func start(localeIdentifier: String? = nil) async {
         errorMessage = nil
         transcript = ""
         audioFileName = nil
 
         let microphoneAllowed = await requestMicrophonePermission()
         guard microphoneAllowed else {
-            errorMessage = "Microphone access is required to record a thought."
+            errorMessage = String(localized: "Microphone access is required to record a thought.")
             return
         }
         let speechStatus = await requestSpeechPermission()
@@ -50,8 +50,8 @@ final class VoiceCaptureService: NSObject, ObservableObject {
 
             var request: SFSpeechAudioBufferRecognitionRequest?
             if speechAvailable {
-                let localeID = Locale.current.language.languageCode?.identifier == "ar"
-                    ? "ar-SA" : Locale.current.identifier
+                let localeID = localeIdentifier ?? (Locale.current.language.languageCode?.identifier == "ar"
+                    ? "ar-SA" : Locale.current.identifier)
                 let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeID))
                 if let recognizer, recognizer.isAvailable {
                     let speechRequest = SFSpeechAudioBufferRecognitionRequest()
@@ -85,11 +85,12 @@ final class VoiceCaptureService: NSObject, ObservableObject {
             try audioEngine.start()
             isRecording = true
             if !speechAvailable {
-                errorMessage = "Recording audio only; speech recognition is unavailable."
+                errorMessage = String(localized: "Recording audio only; speech recognition is unavailable.")
             }
         } catch {
             cleanupAudio()
-            errorMessage = "Couldn't start recording: \(error.localizedDescription)"
+            errorMessage = String(format: String(localized: "Couldn't start recording: %@"),
+                                  error.localizedDescription)
         }
     }
 

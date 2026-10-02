@@ -1,5 +1,11 @@
 import Foundation
 
+enum L10n {
+    static func text(_ key: String) -> String {
+        NSLocalizedString(key, comment: "")
+    }
+}
+
 /// A wall-clock time with no date attached.
 struct TimeOfDay: Codable, Hashable {
     var hour: Int
@@ -36,7 +42,7 @@ struct Shift: Codable, Identifiable, Hashable {
     var crossesMidnight: Bool { end.minutesFromMidnight <= start.minutesFromMidnight }
 
     var summary: String {
-        "\(start.display) – \(end.display)" + (crossesMidnight ? " (next day)" : "")
+        "\(start.display) – \(end.display)" + (crossesMidnight ? String(localized: " (next day)") : "")
     }
 
     static func newDefault(weekday: Int) -> Shift {
@@ -62,12 +68,12 @@ enum ReminderCategory: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .personal: return "Personal"
-        case .health: return "Health"
-        case .medicine: return "Medicine"
-        case .work: return "Work"
-        case .money: return "Bills"
-        case .errands: return "Errands"
+        case .personal: return String(localized: "Personal")
+        case .health: return String(localized: "Health")
+        case .medicine: return String(localized: "Medicine")
+        case .work: return String(localized: "Work")
+        case .money: return String(localized: "Bills")
+        case .errands: return String(localized: "Errands")
         }
     }
 
@@ -94,11 +100,11 @@ enum ReminderRepeat: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .never: return "Never"
-        case .daily: return "Every day"
-        case .weekdays: return "Weekdays"
-        case .weekly: return "Every week"
-        case .monthly: return "Every month"
+        case .never: return String(localized: "Never")
+        case .daily: return String(localized: "Every day")
+        case .weekdays: return String(localized: "Weekdays")
+        case .weekly: return String(localized: "Every week")
+        case .monthly: return String(localized: "Every month")
         }
     }
 }
@@ -108,7 +114,9 @@ enum ReminderPriority: String, Codable, CaseIterable, Identifiable {
     case important
 
     var id: String { rawValue }
-    var label: String { self == .important ? "Important" : "Normal" }
+    var label: String {
+        self == .important ? String(localized: "Important") : String(localized: "Normal")
+    }
 }
 
 enum ReminderSource: String, Codable {
@@ -147,7 +155,7 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     }
 
     var summary: String {
-        if !hasSchedule { return "Inbox · choose a time later" }
+        if !hasSchedule { return String(localized: "Inbox · choose a time later") }
         if repeatRule == .never {
             return dueDate.formatted(date: .abbreviated, time: .shortened)
         }
@@ -177,6 +185,14 @@ struct Settings: Codable {
     var nagEnabled = true
     var nagIntervalMinutes = 5
     var nagCount = 3
+    /// Optional for backwards compatibility. Missing values adopt the safer
+    /// confirmation-first behavior introduced in version 2.2.
+    var persistentFollowUpsEnabled: Bool? = true
+
+    var persistentFollowUps: Bool {
+        get { persistentFollowUpsEnabled ?? true }
+        set { persistentFollowUpsEnabled = newValue }
+    }
 
     var geofenceEnabled = false
     var geofenceLatitude: Double?
@@ -203,9 +219,9 @@ struct DutyEvent: Codable, Identifiable, Hashable {
 
         var label: String {
             switch self {
-            case .done: return "Confirmed"
-            case .snoozed: return "Snoozed"
-            case .opened: return "Opened"
+            case .done: return String(localized: "Confirmed")
+            case .snoozed: return String(localized: "Snoozed")
+            case .opened: return String(localized: "Opened")
             }
         }
 
@@ -229,15 +245,20 @@ struct DutyEvent: Codable, Identifiable, Hashable {
 
     var title: String {
         if let reminderTitle, !reminderTitle.isEmpty { return reminderTitle }
-        return isCheckIn ? "Check-in" : "Check-out"
+        return isCheckIn ? String(localized: "Check-in") : String(localized: "Check-out")
     }
 }
 
 enum Weekday {
     /// Names indexed so that `names[weekday - 1]` matches `Calendar`'s numbering.
-    static let names = ["Sunday", "Monday", "Tuesday", "Wednesday",
-                        "Thursday", "Friday", "Saturday"]
-    static let short = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    static let names = [String(localized: "Sunday"), String(localized: "Monday"),
+                        String(localized: "Tuesday"), String(localized: "Wednesday"),
+                        String(localized: "Thursday"), String(localized: "Friday"),
+                        String(localized: "Saturday")]
+    static let short = [String(localized: "Sun"), String(localized: "Mon"),
+                        String(localized: "Tue"), String(localized: "Wed"),
+                        String(localized: "Thu"), String(localized: "Fri"),
+                        String(localized: "Sat")]
 
     static func name(_ weekday: Int) -> String { names[(weekday - 1) % 7] }
     static func shortName(_ weekday: Int) -> String { short[(weekday - 1) % 7] }

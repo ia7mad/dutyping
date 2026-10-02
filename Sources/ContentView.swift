@@ -41,10 +41,11 @@ struct Card<Content: View>: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.accent)
                     }
-                    Text(title.uppercased())
+                    Text(L10n.text(title))
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.8)
                         .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
                 }
             }
             content
@@ -207,8 +208,8 @@ struct ContentView: View {
                 .font(.system(size: 26))
                 .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text(title)).font(.headline)
+                Text(L10n.text(detail)).font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -251,8 +252,11 @@ struct ContentView: View {
 
     private var headerSubtitle: String {
         let inboxCount = store.reminders.filter { !$0.hasSchedule }.count
-        if inboxCount > 0 { return "\(inboxCount) in inbox · capture before you forget" }
-        return "Your private reminder assistant"
+        if inboxCount > 0 {
+            return String(format: String(localized: "%d in inbox · capture before you forget"),
+                          inboxCount)
+        }
+        return String(localized: "Your private reminder assistant")
     }
 
     // MARK: - Personal assistant
@@ -338,7 +342,11 @@ struct ContentView: View {
             reminder.repeatRule = repeatRule
             editingReminder = reminder
         } label: {
-            Label(label, systemImage: icon)
+            Label {
+                Text(L10n.text(label))
+            } icon: {
+                Image(systemName: icon)
+            }
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -462,7 +470,7 @@ struct ContentView: View {
             Haptics.success()
             refresh()
         } label: {
-            Text(label)
+            Text(L10n.text(label))
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
@@ -498,12 +506,32 @@ struct ContentView: View {
 
             if store.settings.nagEnabled {
                 Divider()
+                Toggle(isOn: Binding(
+                    get: { store.settings.persistentFollowUps },
+                    set: {
+                        store.settings.persistentFollowUps = $0
+                        store.commit()
+                        refresh()
+                    })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Keep active until confirmed")
+                            .font(.subheadline.weight(.medium))
+                        Text("Uses expanding follow-ups so the reminder stays with you for hours.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(Theme.accent)
+
+                Divider()
                 SliderRow(label: "Repeat every",
                           value: intBinding(\.nagIntervalMinutes),
                           range: 1...30, unit: "min")
-                SliderRow(label: "Up to",
-                          value: intBinding(\.nagCount),
-                          range: 1...6, unit: "times")
+                if !store.settings.persistentFollowUps {
+                    SliderRow(label: "Up to",
+                              value: intBinding(\.nagCount),
+                              range: 1...6, unit: "times")
+                }
                 Text("Reminders carry Done and Snooze buttons — swipe down on one to see them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -657,9 +685,9 @@ struct ContentView: View {
             Circle()
                 .fill(good ? Theme.good : Theme.warn)
                 .frame(width: 8, height: 8)
-            Text(label).font(.subheadline)
+            Text(L10n.text(label)).font(.subheadline)
             Spacer()
-            Text(value)
+            Text(L10n.text(value))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
         }
@@ -747,9 +775,9 @@ private struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(label).font(.subheadline)
+                Text(L10n.text(label)).font(.subheadline)
                 Spacer()
-                Text("\(Int(value)) \(unit)")
+                Text("\(Int(value)) \(L10n.text(unit))")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
@@ -888,7 +916,7 @@ struct ShiftEditor: View {
             Haptics.tap()
             withAnimation(.snappy) { selectedDays = days }
         } label: {
-            Text(label)
+            Text(L10n.text(label))
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)

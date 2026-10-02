@@ -8,25 +8,25 @@ enum ReminderKind: String {
 
     var firstTitle: String {
         switch self {
-        case .checkIn: return "You're on duty"
-        case .checkOut: return "Shift over"
-        case .personal: return "Reminder"
+        case .checkIn: return String(localized: "You're on duty")
+        case .checkOut: return String(localized: "Shift over")
+        case .personal: return String(localized: "Reminder")
         }
     }
 
     var firstBody: String {
         switch self {
-        case .checkIn: return "Did you check in?"
-        case .checkOut: return "Did you check out?"
-        case .personal: return "You asked me to remind you."
+        case .checkIn: return String(localized: "Did you check in?")
+        case .checkOut: return String(localized: "Did you check out?")
+        case .personal: return String(localized: "You asked me to remind you.")
         }
     }
 
     var nagBody: String {
         switch self {
-        case .checkIn: return "Still haven't checked in."
-        case .checkOut: return "Still haven't checked out."
-        case .personal: return "This reminder is still waiting for you."
+        case .checkIn: return String(localized: "Still haven't checked in.")
+        case .checkOut: return String(localized: "Still haven't checked out.")
+        case .personal: return String(localized: "This reminder is still waiting for you.")
         }
     }
 }
@@ -72,11 +72,15 @@ final class Scheduler: ObservableObject {
 
     func registerCategories() {
         let done = UNNotificationAction(identifier: Self.doneActionID,
-                                        title: "Done",
-                                        options: [])
+                                        title: String(localized: "Confirm done"),
+                                        options: [],
+                                        icon: UNNotificationActionIcon(
+                                            systemImageName: "checkmark.circle.fill"))
         let snooze = UNNotificationAction(identifier: Self.snoozeActionID,
-                                          title: "Snooze 10 min",
-                                          options: [])
+                                          title: String(localized: "Snooze 10 min"),
+                                          options: [],
+                                          icon: UNNotificationActionIcon(
+                                            systemImageName: "clock.arrow.circlepath"))
         let category = UNNotificationCategory(identifier: Self.categoryID,
                                               actions: [done, snooze],
                                               intentIdentifiers: [],
@@ -117,6 +121,7 @@ final class Scheduler: ObservableObject {
         let last = occurrences.last?.fireDate
         await MainActor.run { self.lastScheduledDate = last }
         await scheduleHousekeeping(after: last)
+        LiveActivityManager.shared.syncToNextReminder()
     }
 
     private func plan(shifts: [Shift], reminders: [PersonalReminder],
@@ -183,7 +188,8 @@ final class Scheduler: ObservableObject {
                 result += series(kind: .personal,
                                  title: reminder.cleanTitle,
                                  body: notes.isEmpty ? reminder.category.label : notes,
-                                 followUpBody: "Still waiting: \(reminder.cleanTitle)",
+                                 followUpBody: String(format: String(localized: "Still waiting: %@"),
+                                                      reminder.cleanTitle),
                                  base: base,
                                  seriesID: "reminder-\(reminder.id.uuidString)-\(stamp)",
                                  eventTitle: reminder.cleanTitle,
@@ -232,9 +238,10 @@ final class Scheduler: ObservableObject {
                         followUpBody: String, base: Date, seriesID: String,
                         eventTitle: String?, isImportant: Bool,
                         settings: Settings, now: Date) -> [Occurrence] {
-        let followUpCount = settings.nagEnabled ? max(0, settings.nagCount) : 0
-        return (0...followUpCount).compactMap { index in
-            let fire = base.addingTimeInterval(Double(index * settings.nagIntervalMinutes) * 60)
+        guard !AcknowledgementStore.shared.contains(seriesID) else { return [] }
+        let delays = followUpDelays(settings: settings)
+        return delays.enumerated().compactMap { index, delayMinutes in
+            let fire = base.addingTimeInterval(Double(delayMinutes) * 60)
             guard fire > now else { return nil }
             return Occurrence(kind: kind, title: title, body: body,
                               followUpBody: followUpBody, fireDate: fire,
@@ -248,6 +255,7 @@ final class Scheduler: ObservableObject {
         content.title = occurrence.title
         content.body = occurrence.nagIndex == 0 ? occurrence.body : occurrence.followUpBody
         content.sound = .default
+        content.badge = 1
         content.categoryIdentifier = Self.categoryID
         if occurrence.isImportant { content.interruptionLevel = .timeSensitive }
 
@@ -274,7 +282,7 @@ final class Scheduler: ObservableObject {
 
         let content = UNMutableNotificationContent()
         content.title = "DutyPing"
-        content.body = "Open the app to extend your reminder schedule."
+        content.body = String(localized: "Open the app to extend your reminder schedule.")
         content.sound = .default
         let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: warn)
         try? await center.add(UNNotificationRequest(
@@ -296,12 +304,12 @@ final class Scheduler: ObservableObject {
 
         var authorizationLabel: String {
             switch authorizationStatus {
-            case .authorized: return "Allowed"
-            case .provisional: return "Quiet delivery"
-            case .denied: return "Blocked in iOS Settings"
-            case .notDetermined: return "Not asked yet"
-            case .ephemeral: return "Temporary"
-            @unknown default: return "Unknown"
+            case .authorized: return String(localized: "Allowed")
+            case .provisional: return String(localized: "Quiet delivery")
+            case .denied: return String(localized: "Blocked in iOS Settings")
+            case .notDetermined: return String(localized: "Not asked yet")
+            case .ephemeral: return String(localized: "Temporary")
+            @unknown default: return String(localized: "Unknown")
             }
         }
     }
@@ -336,8 +344,8 @@ final class Scheduler: ObservableObject {
 
     func sendTest(after seconds: TimeInterval = 10) {
         let content = UNMutableNotificationContent()
-        content.title = "Test reminder"
-        content.body = "If you can see this, DutyPing can reach you."
+        content.title = String(localized: "Test reminder")
+        content.body = String(localized: "If you can see this, DutyPing can reach you.")
         content.sound = .default
         content.categoryIdentifier = Self.categoryID
         center.add(UNNotificationRequest(
@@ -350,16 +358,17 @@ final class Scheduler: ObservableObject {
 
     func fireNow(kind: ReminderKind, reason: String, settings: Settings) {
         let seriesID = "geo-\(kind.rawValue)-\(Int(Date().timeIntervalSince1970))"
-        let followUpCount = settings.nagEnabled ? max(0, settings.nagCount) : 0
+        let delays = followUpDelays(settings: settings)
 
-        for index in 0...followUpCount {
+        for (index, delayMinutes) in delays.enumerated() {
             let content = UNMutableNotificationContent()
             content.title = reason
             content.body = index == 0 ? kind.firstBody : kind.nagBody
             content.sound = .default
+            content.badge = 1
             content.categoryIdentifier = Self.categoryID
             content.userInfo = [Self.seriesKey: seriesID, Self.kindKey: kind.rawValue]
-            let delay = Double(index * settings.nagIntervalMinutes) * 60
+            let delay = Double(delayMinutes) * 60
             center.add(UNNotificationRequest(
                 identifier: "\(seriesID)#\(index)",
                 content: content,
@@ -373,26 +382,44 @@ final class Scheduler: ObservableObject {
         let kind = info[Self.kindKey] as? String ?? ReminderKind.checkIn.rawValue
         let eventTitle = info[Self.titleKey] as? String
 
-        if let seriesID = info[Self.seriesKey] as? String {
-            center.getPendingNotificationRequests { requests in
-                let identifiers = requests.map(\.identifier)
-                    .filter { $0.hasPrefix("\(seriesID)#") }
-                self.center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            }
-        }
-
         switch response.actionIdentifier {
         case Self.snoozeActionID:
+            if let seriesID = info[Self.seriesKey] as? String { cancelSeries(seriesID) }
             snooze(kind: kind,
                    title: response.notification.request.content.title,
                    body: response.notification.request.content.body,
                    eventTitle: eventTitle)
             EventLog.shared.record(kind: kind, action: .snoozed, title: eventTitle)
         case Self.doneActionID:
+            if let seriesID = info[Self.seriesKey] as? String {
+                AcknowledgementStore.shared.markCompleted(seriesID)
+                cancelSeries(seriesID)
+                LiveActivityManager.shared.end(seriesID: seriesID)
+            }
+            center.setBadgeCount(0) { _ in }
             EventLog.shared.record(kind: kind, action: .done, title: eventTitle)
         default:
             EventLog.shared.record(kind: kind, action: .opened, title: eventTitle)
         }
+    }
+
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme == "dutyping", url.host == "complete",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let seriesID = components.queryItems?.first(where: { $0.name == "series" })?.value
+        else { return }
+        let kind = components.queryItems?.first(where: { $0.name == "kind" })?.value
+            ?? ReminderKind.personal.rawValue
+        let title = components.queryItems?.first(where: { $0.name == "title" })?.value
+        complete(seriesID: seriesID, kind: kind, title: title)
+    }
+
+    func complete(seriesID: String, kind: String, title: String?) {
+        AcknowledgementStore.shared.markCompleted(seriesID)
+        cancelSeries(seriesID)
+        center.setBadgeCount(0) { _ in }
+        LiveActivityManager.shared.end(seriesID: seriesID)
+        EventLog.shared.record(kind: kind, action: .done, title: title)
     }
 
     private func snooze(kind: String, title: String, body: String,
@@ -400,9 +427,10 @@ final class Scheduler: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = kind == ReminderKind.personal.rawValue
-            ? "Snoozed — \(title)"
-            : "Snoozed — \(body)"
+            ? String(format: String(localized: "Snoozed — %@"), title)
+            : String(format: String(localized: "Snoozed — %@"), body)
         content.sound = .default
+        content.badge = 1
         content.categoryIdentifier = Self.categoryID
         let series = "snooze-\(Int(Date().timeIntervalSince1970))"
         var info: [AnyHashable: Any] = [Self.seriesKey: series, Self.kindKey: kind]
@@ -414,5 +442,34 @@ final class Scheduler: ObservableObject {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: minutes * 60,
                                                         repeats: false)))
+    }
+
+    private func followUpDelays(settings: Settings) -> [Int] {
+        guard settings.nagEnabled else { return [0] }
+        let interval = max(1, settings.nagIntervalMinutes)
+        if settings.persistentFollowUps {
+            // Expanding intervals keep the reminder alive for hours without
+            // consuming the entire 64-notification allowance immediately.
+            return [0, 1, 3, 6, 12, 24, 48, 96].map { $0 * interval }
+        }
+        return (0...max(0, settings.nagCount)).map { $0 * interval }
+    }
+
+    private func cancelSeries(_ seriesID: String) {
+        center.getPendingNotificationRequests { requests in
+            let identifiers = requests.map(\.identifier)
+                .filter { $0.hasPrefix("\(seriesID)#") }
+            self.center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            self.syncLiveActivityAfterCancellation()
+        }
+        center.getDeliveredNotifications { notifications in
+            let identifiers = notifications.map { $0.request.identifier }
+                .filter { $0.hasPrefix("\(seriesID)#") }
+            self.center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+    }
+
+    private func syncLiveActivityAfterCancellation() {
+        LiveActivityManager.shared.syncToNextReminder()
     }
 }
