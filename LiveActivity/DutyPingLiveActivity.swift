@@ -30,7 +30,7 @@ struct DutyPingLiveActivity: Widget {
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.dueDate, style: .timer)
+                    countdown(context)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -64,16 +64,17 @@ struct DutyPingLiveActivity: Widget {
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } compactTrailing: {
-                Text(context.state.dueDate, style: .timer)
+                countdown(context)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.orange)
+                    .frame(width: 58, alignment: .trailing)
             } minimal: {
                 Image("Logo")
                     .resizable()
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
-            .widgetURL(context.attributes.completionURL)
+            .widgetURL(context.attributes.openURL)
             .keylineTint(.mint)
         }
     }
@@ -109,7 +110,7 @@ struct DutyPingLiveActivity: Widget {
             }
             Spacer()
             VStack(spacing: 5) {
-                Text(context.state.dueDate, style: .timer)
+                countdown(context)
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(.white)
                 Link(destination: context.attributes.completionURL) {
@@ -120,5 +121,12 @@ struct DutyPingLiveActivity: Widget {
             }
         }
         .padding(16)
+    }
+
+    private func countdown(_ context: ActivityViewContext<ReminderActivityAttributes>) -> some View {
+        Text(timerInterval: min(context.state.startedAt, context.state.dueDate)...context.state.dueDate,
+             countsDown: true)
+            .monospacedDigit()
+            .multilineTextAlignment(.trailing)
     }
 }

@@ -25,6 +25,7 @@ struct AddDutyPingReminderIntent: AppIntent {
         var reminder = PersonalReminder(title: cleaned, dueDate: dueDate)
         reminder.source = .siri
         await store.addReminder(reminder)
+        await Scheduler.shared.waitUntilIdle()
 
         return .result(dialog: "Done. DutyPing will remind you \(dueDate.formatted(date: .abbreviated, time: .shortened)).")
     }
@@ -49,6 +50,7 @@ struct CaptureDutyPingThoughtIntent: AppIntent {
         let store = await Store()
         let reminder = PersonalReminder.inbox(title: cleaned, notes: cleaned, source: .siri)
         await store.addReminder(reminder)
+        await Scheduler.shared.waitUntilIdle()
         return .result(dialog: "Saved to your DutyPing inbox.")
     }
 }

@@ -1,92 +1,90 @@
 import ActivityKit
 import Foundation
+import UIKit
 import UserNotifications
 
-/// Best-effort local Live Activity support. DutyPing starts the next reminder
-/// when it falls within iOS's Live Activity window. Truly automatic starts
-/// while the app has not run require APNs push-to-start and a remote server.
+@MainActor
 final class LiveActivityManager {
     static let shared = LiveActivityManager()
     private let center = UNUserNotificationCenter.current()
-
     private init() {}
 
-    func syncToNextReminder() {
+    func end(seriesID: String) async {
         guard #available(iOS 16.2, *) else { return }
-        Task { await sync() }
+        for activity in Activity<ReminderActivityAttributes>.activities
+        where activity.attributes.seriesID == seriesID {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
 
-    func end(seriesID: String) {
+    func syncToNextReminder(paused: Bool = false) async {
         guard #available(iOS 16.2, *) else { return }
-        Task {
-            for activity in Activity<ReminderActivityAttributes>.activities
-            where activity.attributes.seriesID == seriesID {
-                let final = ReminderActivityAttributes.ContentState(
-                    dueDate: activity.content.state.dueDate,
-                    isCompleted: true,
-                    repeatIntervalMinutes: activity.content.state.repeatIntervalMinutes)
-                await activity.end(ActivityContent(state: final, staleDate: nil),
-                                   dismissalPolicy: .immediate)
+        let current = Activity<ReminderActivityAttributes>.activities
+        guard !paused, ActivityAuthorizationInfo().areActivitiesEnabled else {
+            for activity in current { await activity.end(nil, dismissalPolicy: .immediate) }
+            return
+        }
+
+        let pending = await center.pendingNotificationRequests()
+        let delivered = await center.deliveredNotifications()
+        let now = Date()
+        let candidates = (pending + delivered.map(\.request)).compactMap { request -> Candidate? in
+            guard let series = request.content.userInfo["series"] as? String,
+                  !AcknowledgementStore.shared.contains(series) else { return nil }
+            let stamp = request.content.userInfo["dueDate"] as? TimeInterval
+            guard let due = stamp.map({ Date(timeIntervalSince1970: $0) }) ?? request.scheduledFireDate,
+                  due > now.addingTimeInterval(-8 * 3600),
+                  due <= now.addingTimeInterval(8 * 3600) else { return nil }
+            return Candidate(seriesID: series,
+                             kind: request.content.userInfo["kind"] as? String ?? "personal",
+                             title: request.content.userInfo["eventTitle"] as? String ?? request.content.title,
+                             dueDate: due,
+                             repeatIntervalMinutes: request.content.userInfo["repeatIntervalMinutes"] as? Int ?? 0)
+        }.sorted {
+            if $0.dueDate != $1.dueDate { return $0.dueDate < $1.dueDate }
+            return $0.seriesID < $1.seriesID
+        }
+
+        guard let next = candidates.first else {
+            for activity in current { await activity.end(nil, dismissalPolicy: .immediate) }
+            return
+        }
+
+        let matching = current.first {
+            ($0.activityState == .active || $0.activityState == .stale) &&
+                $0.attributes.seriesID == next.seriesID && $0.attributes.title == next.title
+        }
+        for activity in current where activity.id != matching?.id {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+        let state = ReminderActivityAttributes.ContentState(
+            dueDate: next.dueDate, isCompleted: false,
+            repeatIntervalMinutes: next.repeatIntervalMinutes,
+            startedAt: matching?.content.state.startedAt ?? min(now, next.dueDate))
+        let content = ActivityContent(state: state, staleDate: next.dueDate)
+        if let matching {
+            await matching.update(content)
+        } else if UIApplication.shared.applicationState == .active {
+            // iOS only permits a local start in the foreground. Updates and
+            // endings remain valid from background notification actions.
+            do {
+                _ = try Activity.request(
+                    attributes: ReminderActivityAttributes(seriesID: next.seriesID,
+                                                            title: next.title, kind: next.kind),
+                    content: content, pushType: nil)
+            } catch {
+                lastError = error.localizedDescription
             }
         }
     }
 
-    @available(iOS 16.2, *)
-    private func sync() async {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let requests = await center.pendingNotificationRequests()
-        let candidates = requests.compactMap { request -> Candidate? in
-            guard request.identifier != "housekeeping",
-                  let series = request.content.userInfo["series"] as? String,
-                  let fire = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
-                    ?? (request.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate()
-            else { return nil }
-            return Candidate(seriesID: series,
-                             kind: request.content.userInfo["kind"] as? String ?? "personal",
-                             title: request.content.userInfo["eventTitle"] as? String
-                                ?? request.content.title,
-                             fireDate: fire,
-                             repeatIntervalMinutes: request.content.userInfo["repeatIntervalMinutes"] as? Int ?? 0)
-        }
-        .sorted { $0.fireDate < $1.fireDate }
-
-        guard let next = candidates.first,
-              next.fireDate.timeIntervalSinceNow <= 8 * 60 * 60 else {
-            return
-        }
-
-        let current = Activity<ReminderActivityAttributes>.activities
-        if let matching = current.first(where: { $0.attributes.seriesID == next.seriesID }) {
-            let state = ReminderActivityAttributes.ContentState(
-                dueDate: next.fireDate, isCompleted: false,
-                repeatIntervalMinutes: next.repeatIntervalMinutes)
-            await matching.update(ActivityContent(state: state,
-                                                  staleDate: next.fireDate.addingTimeInterval(8 * 3600)))
-            return
-        }
-
-        for activity in current {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-
-        let attributes = ReminderActivityAttributes(seriesID: next.seriesID,
-                                                    title: next.title,
-                                                    kind: next.kind)
-        let state = ReminderActivityAttributes.ContentState(
-            dueDate: next.fireDate, isCompleted: false,
-            repeatIntervalMinutes: next.repeatIntervalMinutes)
-        _ = try? Activity.request(
-            attributes: attributes,
-            content: ActivityContent(state: state,
-                                     staleDate: next.fireDate.addingTimeInterval(8 * 3600)),
-            pushType: nil)
-    }
+    private(set) var lastError: String?
 
     private struct Candidate {
         let seriesID: String
         let kind: String
         let title: String
-        let fireDate: Date
+        let dueDate: Date
         let repeatIntervalMinutes: Int
     }
 }

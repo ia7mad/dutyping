@@ -5,12 +5,12 @@ import Foundation
 final class AcknowledgementStore {
     static let shared = AcknowledgementStore()
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let key = "completedReminderSeries"
     private let lock = NSLock()
-    private let retention: TimeInterval = 120 * 24 * 60 * 60
+    private let snoozeKey = "snoozedReminderSeries"
 
-    private init() {}
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     func contains(_ seriesID: String) -> Bool {
         lock.lock()
@@ -22,10 +22,35 @@ final class AcknowledgementStore {
         lock.lock()
         defer { lock.unlock() }
 
-        let cutoff = Date().addingTimeInterval(-retention).timeIntervalSince1970
-        var saved = records().filter { $0.value >= cutoff }
+        var saved = records()
         saved[seriesID] = Date().timeIntervalSince1970
         defaults.set(saved, forKey: key)
+        var snoozes = defaults.dictionary(forKey: snoozeKey) ?? [:]
+        snoozes.removeValue(forKey: seriesID)
+        defaults.set(snoozes, forKey: snoozeKey)
+    }
+
+    func reopen(_ seriesID: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var saved = records()
+        saved.removeValue(forKey: seriesID)
+        defaults.set(saved, forKey: key)
+    }
+
+    func snooze(_ seriesID: String, until date: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        var saved = defaults.dictionary(forKey: snoozeKey) ?? [:]
+        saved[seriesID] = date.timeIntervalSince1970
+        defaults.set(saved, forKey: snoozeKey)
+    }
+
+    func snoozedUntil(_ seriesID: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let value = defaults.dictionary(forKey: snoozeKey)?[seriesID] as? NSNumber else { return nil }
+        return Date(timeIntervalSince1970: value.doubleValue)
     }
 
     private func records() -> [String: TimeInterval] {

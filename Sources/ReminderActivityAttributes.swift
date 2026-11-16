@@ -7,11 +7,14 @@ struct ReminderActivityAttributes: ActivityAttributes {
         var dueDate: Date
         var isCompleted: Bool
         var repeatIntervalMinutes: Int
+        var startedAt: Date = Date()
     }
 
     var seriesID: String
     var title: String
     var kind: String
+
+    var openURL: URL { URL(string: "dutyping://open")! }
 
     var completionURL: URL {
         var components = URLComponents()

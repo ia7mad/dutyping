@@ -63,6 +63,7 @@ struct Card<Content: View>: View {
 
 struct ContentView: View {
     @EnvironmentObject private var store: Store
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var geofence = GeofenceManager.shared
     @ObservedObject private var assistant = AssistantConfiguration.shared
 
@@ -132,10 +133,25 @@ struct ContentView: View {
             .sheet(isPresented: $showingAssistantSettings) {
                 AssistantSettingsView()
             }
-            .task {
+            .onReceive(NotificationCenter.default.publisher(for: .dutyPingScheduleChanged)) { _ in
+                store.objectWillChange.send()
+                refresh()
+            }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
                 _ = await Scheduler.shared.requestAuthorization()
-                store.commit()
+                await Scheduler.shared.waitUntilIdle()
                 await reloadDiagnostics()
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 5_000_000_000) }
+                    catch { return }
+                    if store.settings.pausedUntil != nil && !store.settings.isPaused {
+                        store.settings.pausedUntil = nil
+                        store.commit()
+                    }
+                    await Scheduler.shared.refreshLiveActivity(paused: store.settings.isPaused)
+                    await reloadDiagnostics()
+                }
             }
         }
     }
@@ -185,7 +201,6 @@ struct ContentView: View {
                             .font(.system(size: 40, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(Theme.gradient)
-                            .contentTransition(.numericText())
                     }
 
                     Text("\(next.label) · \(next.date.formatted(date: .abbreviated, time: .shortened))")
@@ -363,14 +378,16 @@ struct ContentView: View {
                     Haptics.tap()
                     editingReminder = reminder
                 } onToggle: { isEnabled in
-                    var updated = reminder
-                    updated.isEnabled = isEnabled
-                    store.updateReminder(updated)
+                    store.setReminderEnabled(id: reminder.id, enabled: isEnabled)
                     Haptics.tap()
                     refresh()
                 } onDelete: {
                     withAnimation { store.deleteReminder(id: reminder.id) }
                     refresh()
+                } onComplete: {
+                    Scheduler.shared.complete(seriesID: reminder.seriesID(for: reminder.dueDate),
+                                              kind: ReminderKind.personal.rawValue,
+                                              title: reminder.cleanTitle)
                 }
 
                 if reminder.id != store.reminders.last?.id { Divider() }
@@ -632,6 +649,11 @@ struct ContentView: View {
 
     private var diagnosticsCard: some View {
         Card(title: "Status", icon: "stethoscope") {
+            if let error = diagnostics.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.warn)
+            }
             statusRow("Permission", diagnostics.authorizationLabel,
                       good: diagnostics.isAuthorized)
             statusRow("Queued alerts", "\(diagnostics.pendingCount)",
@@ -702,6 +724,7 @@ struct ContentView: View {
     private func reloadDiagnostics() async {
         diagnostics = await Scheduler.shared.diagnostics()
         events = EventLog.shared.load()
+        testSent = diagnostics.upcoming.contains { $0.id.hasPrefix("test-") }
     }
 
     private func binding<T>(_ keyPath: WritableKeyPath<Settings, T>) -> Binding<T> {
@@ -891,7 +914,7 @@ struct ShiftEditor: View {
         let selected = selectedDays.contains(day)
         return Button {
             Haptics.tap()
-            withAnimation(.snappy) {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 if isNew {
                     if selected { selectedDays.remove(day) } else { selectedDays.insert(day) }
                 } else {
@@ -914,7 +937,7 @@ struct ShiftEditor: View {
     private func presetButton(_ label: String, days: Set<Int>) -> some View {
         Button {
             Haptics.tap()
-            withAnimation(.snappy) { selectedDays = days }
+            withAnimation(.easeInOut(duration: 0.2)) { selectedDays = days }
         } label: {
             Text(L10n.text(label))
                 .font(.caption.weight(.semibold))

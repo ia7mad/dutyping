@@ -1,5 +1,16 @@
 import Foundation
+import Combine
 import UserNotifications
+
+extension UNNotificationRequest {
+    var scheduledFireDate: Date? {
+        switch trigger {
+        case let calendar as UNCalendarNotificationTrigger: return calendar.nextTriggerDate()
+        case let interval as UNTimeIntervalNotificationTrigger: return interval.nextTriggerDate()
+        default: return nil
+        }
+    }
+}
 
 enum ReminderKind: String {
     case checkIn
@@ -31,236 +42,112 @@ enum ReminderKind: String {
     }
 }
 
-private struct Occurrence {
-    let kind: ReminderKind
-    let title: String
-    let body: String
-    let followUpBody: String
-    let fireDate: Date
-    let seriesID: String
-    let nagIndex: Int
-    let eventTitle: String?
-    let isImportant: Bool
-    let repeatIntervalMinutes: Int
+extension Notification.Name {
+    static let dutyPingScheduleChanged = Notification.Name("dutyPingScheduleChanged")
 }
 
-/// Maintains the local notification queue for shifts and personal reminders.
-/// No reminder data leaves the device.
+/// All queue mutations run in order, including completion and snooze actions.
+/// MainActor alone is insufficient because notification-center awaits reenter it.
+@MainActor
 final class Scheduler: ObservableObject {
     static let shared = Scheduler()
-
     static let categoryID = "DUTY_REMINDER"
     static let doneActionID = "DUTY_DONE"
     static let snoozeActionID = "DUTY_SNOOZE"
-
-    private static let seriesKey = "series"
-    private static let kindKey = "kind"
-    private static let titleKey = "eventTitle"
-    private static let housekeepingID = "housekeeping"
-
-    /// Leave a few slots below iOS's limit for test, snooze, location, and
-    /// housekeeping notifications.
-    private let maxPending = 58
-    private let shiftHorizonDays = 21
-    private let reminderHorizonDays = 90
     private let center = UNUserNotificationCenter.current()
-
+    private var queueTail: Task<Void, Never>?
     @Published private(set) var lastScheduledDate: Date?
+    @Published private(set) var lastError: String?
 
     private init() {}
 
-    // MARK: - Permissions
+    func waitUntilIdle() async { await queueTail?.value }
+
+    func refreshLiveActivity(paused: Bool) async {
+        await enqueue { await LiveActivityManager.shared.syncToNextReminder(paused: paused) }.value
+    }
+
+    @discardableResult
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = queueTail
+        let work = Task { @MainActor in
+            await previous?.value
+            await operation()
+        }
+        queueTail = work
+        return work
+    }
 
     func registerCategories() {
         let done = UNNotificationAction(identifier: Self.doneActionID,
-                                        title: String(localized: "Confirm done"),
-                                        options: [],
-                                        icon: UNNotificationActionIcon(
-                                            systemImageName: "checkmark.circle.fill"))
+                                        title: String(localized: "Confirm done"), options: [],
+                                        icon: UNNotificationActionIcon(systemImageName: "checkmark.circle.fill"))
         let snooze = UNNotificationAction(identifier: Self.snoozeActionID,
-                                          title: String(localized: "Snooze 10 min"),
-                                          options: [],
-                                          icon: UNNotificationActionIcon(
-                                            systemImageName: "clock.arrow.circlepath"))
-        let category = UNNotificationCategory(identifier: Self.categoryID,
-                                              actions: [done, snooze],
-                                              intentIdentifiers: [],
-                                              options: [])
-        center.setNotificationCategories([category])
+                                          title: String(localized: "Snooze 10 min"), options: [],
+                                          icon: UNNotificationActionIcon(systemImageName: "clock.arrow.circlepath"))
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: Self.categoryID, actions: [done, snooze],
+                                   intentIdentifiers: [], options: [])
+        ])
     }
 
     func requestAuthorization() async -> Bool {
         (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
-    // MARK: - Scheduling
-
     func reschedule(shifts: [Shift], reminders: [PersonalReminder], settings: Settings) {
-        Task {
-            await rescheduleAsync(shifts: shifts, reminders: reminders, settings: settings)
-        }
+        enqueue { await self.rebuild(shifts: shifts, reminders: reminders, settings: settings) }
     }
 
-    func rescheduleAsync(shifts: [Shift], reminders: [PersonalReminder],
-                         settings: Settings) async {
-        let stale = await center.pendingNotificationRequests()
-            .map(\.identifier)
-            .filter {
-                !$0.hasPrefix("geo-") &&
-                !$0.hasPrefix("snooze-") &&
-                !$0.hasPrefix("test-")
-            }
-        center.removePendingNotificationRequests(withIdentifiers: stale)
+    func rescheduleAsync(shifts: [Shift], reminders: [PersonalReminder], settings: Settings) async {
+        await enqueue {
+            await self.rebuild(shifts: shifts, reminders: reminders, settings: settings)
+        }.value
+    }
 
-        let start = max(Date(), settings.pausedUntil ?? .distantPast)
-        let occurrences = plan(shifts: shifts, reminders: reminders,
-                               settings: settings, from: start)
+    private func rebuild(shifts: [Shift], reminders: [PersonalReminder], settings: Settings) async {
+        lastError = nil
+        let pending = await center.pendingNotificationRequests()
+        let preserved = pending.filter {
+            $0.identifier.hasPrefix("test-") || ($0.identifier.hasPrefix("geo-") && !settings.isPaused)
+        }
+        let preservedIDs = Set(preserved.map(\.identifier))
+        center.removePendingNotificationRequests(withIdentifiers:
+            pending.map(\.identifier).filter { !preservedIDs.contains($0) })
+
+        let occurrences = ReminderPlanner().plan(shifts: shifts, reminders: reminders,
+                                                settings: settings,
+                                                limit: max(0, 58 - preserved.count))
+        var added: [Occurrence] = []
         for occurrence in occurrences {
-            try? await center.add(makeRequest(for: occurrence))
-        }
-
-        let last = occurrences.last?.fireDate
-        await MainActor.run { self.lastScheduledDate = last }
-        await scheduleHousekeeping(after: last)
-        LiveActivityManager.shared.syncToNextReminder()
-    }
-
-    private func plan(shifts: [Shift], reminders: [PersonalReminder],
-                      settings: Settings, from now: Date) -> [Occurrence] {
-        var all = shiftOccurrences(shifts: shifts, settings: settings, from: now)
-        all += reminderOccurrences(reminders: reminders, settings: settings, from: now)
-        all.sort {
-            if $0.fireDate == $1.fireDate { return $0.isImportant && !$1.isImportant }
-            return $0.fireDate < $1.fireDate
-        }
-
-        // Reserve roughly half the system queue for first alerts. Without this,
-        // a one-minute follow-up series could crowd out check-out or tomorrow's
-        // important reminders. Remaining slots go to the nearest follow-ups.
-        let firstAlertBudget = min(maxPending, maxPending / 2)
-        let firstAlerts = Array(all.filter { $0.nagIndex == 0 }.prefix(firstAlertBudget))
-        let coveredSeries = Set(firstAlerts.map(\.seriesID))
-        let followUps = all.filter {
-            $0.nagIndex > 0 && coveredSeries.contains($0.seriesID)
-        }
-        let selected = firstAlerts + followUps.prefix(max(0, maxPending - firstAlerts.count))
-        return selected.sorted { $0.fireDate < $1.fireDate }
-    }
-
-    private func shiftOccurrences(shifts: [Shift], settings: Settings,
-                                  from now: Date) -> [Occurrence] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: now)
-        var result: [Occurrence] = []
-
-        for offset in 0..<shiftHorizonDays {
-            guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
-            let weekday = calendar.component(.weekday, from: day)
-
-            for shift in shifts where shift.isEnabled && shift.weekday == weekday {
-                let checkIn = shift.start.date(on: day)
-                    .addingTimeInterval(Double(settings.checkInDelayMinutes) * 60)
-                var checkOutDay = day
-                if shift.crossesMidnight,
-                   let next = calendar.date(byAdding: .day, value: 1, to: day) {
-                    checkOutDay = next
-                }
-                let checkOut = shift.end.date(on: checkOutDay)
-                    .addingTimeInterval(Double(-settings.checkOutLeadMinutes) * 60)
-                let stamp = Int(day.timeIntervalSince1970)
-
-                result += series(kind: .checkIn,
-                                 title: ReminderKind.checkIn.firstTitle,
-                                 body: ReminderKind.checkIn.firstBody,
-                                 followUpBody: ReminderKind.checkIn.nagBody,
-                                 base: checkIn,
-                                 seriesID: "shift-\(shift.id.uuidString)-in-\(stamp)",
-                                 eventTitle: nil, isImportant: true,
-                                 settings: settings, now: now)
-                result += series(kind: .checkOut,
-                                 title: ReminderKind.checkOut.firstTitle,
-                                 body: ReminderKind.checkOut.firstBody,
-                                 followUpBody: ReminderKind.checkOut.nagBody,
-                                 base: checkOut,
-                                 seriesID: "shift-\(shift.id.uuidString)-out-\(stamp)",
-                                 eventTitle: nil, isImportant: true,
-                                 settings: settings, now: now)
+            guard !AcknowledgementStore.shared.contains(occurrence.seriesID) else { continue }
+            do {
+                try await center.add(makeRequest(for: occurrence))
+                added.append(occurrence)
+            } catch {
+                lastError = error.localizedDescription
             }
         }
-        return result
+        lastScheduledDate = added.last?.fireDate
+        await scheduleHousekeeping(after: lastScheduledDate)
+
+        // Remove delivered banners for deleted, disabled, or confirmed tasks.
+        let enabled = reminders.filter { $0.isEnabled && $0.hasSchedule }
+        let delivered = await center.deliveredNotifications()
+        let obsolete = delivered.filter { notification in
+            guard let series = notification.request.content.userInfo["series"] as? String else { return false }
+            if settings.isPaused || AcknowledgementStore.shared.contains(series) { return true }
+            return series.hasPrefix("reminder-") &&
+                !enabled.contains { series.hasPrefix("reminder-\($0.id.uuidString)-") }
+        }
+        center.removeDeliveredNotifications(withIdentifiers: obsolete.map { $0.request.identifier })
+        await LiveActivityManager.shared.syncToNextReminder(paused: settings.isPaused)
+        NotificationCenter.default.post(name: .dutyPingScheduleChanged, object: nil)
     }
 
-    private func reminderOccurrences(reminders: [PersonalReminder], settings: Settings,
-                                     from now: Date) -> [Occurrence] {
-        var result: [Occurrence] = []
-        for reminder in reminders where reminder.isEnabled && reminder.hasSchedule && !reminder.cleanTitle.isEmpty {
-            for base in dates(for: reminder, from: now) {
-                let stamp = Int(base.timeIntervalSince1970)
-                result += series(kind: .personal,
-                                 title: reminder.cleanTitle,
-                                 body: reminder.notificationDetail,
-                                 followUpBody: String(format: String(localized: "Still waiting: %@"),
-                                                      reminder.cleanTitle),
-                                 base: base,
-                                 seriesID: "reminder-\(reminder.id.uuidString)-\(stamp)",
-                                 eventTitle: reminder.cleanTitle,
-                                 isImportant: reminder.priority == .important,
-                                 settings: settings, now: now)
-            }
-        }
-        return result
-    }
-
-    private func dates(for reminder: PersonalReminder, from now: Date) -> [Date] {
-        if reminder.repeatRule == .never {
-            return reminder.dueDate > now ? [reminder.dueDate] : []
-        }
-
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: now)
-        let anchorWeekday = calendar.component(.weekday, from: reminder.dueDate)
-        let anchorDay = calendar.component(.day, from: reminder.dueDate)
-        let time = calendar.dateComponents([.hour, .minute], from: reminder.dueDate)
-        var dates: [Date] = []
-
-        for offset in 0..<reminderHorizonDays {
-            guard let day = calendar.date(byAdding: .day, value: offset, to: today),
-                  let candidate = calendar.date(bySettingHour: time.hour ?? 9,
-                                                minute: time.minute ?? 0,
-                                                second: 0, of: day),
-                  candidate > now,
-                  candidate >= reminder.dueDate else { continue }
-
-            let weekday = calendar.component(.weekday, from: candidate)
-            let matches: Bool
-            switch reminder.repeatRule {
-            case .never: matches = false
-            case .daily: matches = true
-            case .weekdays: matches = !calendar.isDateInWeekend(candidate)
-            case .weekly: matches = weekday == anchorWeekday
-            case .monthly: matches = calendar.component(.day, from: candidate) == anchorDay
-            }
-            if matches { dates.append(candidate) }
-        }
-        return dates
-    }
-
-    private func series(kind: ReminderKind, title: String, body: String,
-                        followUpBody: String, base: Date, seriesID: String,
-                        eventTitle: String?, isImportant: Bool,
-                        settings: Settings, now: Date) -> [Occurrence] {
-        guard !AcknowledgementStore.shared.contains(seriesID) else { return [] }
-        let delays = followUpDelays(settings: settings)
-        return delays.enumerated().compactMap { index, delayMinutes in
-            let fire = base.addingTimeInterval(Double(delayMinutes) * 60)
-            guard fire > now else { return nil }
-            return Occurrence(kind: kind, title: title, body: body,
-                              followUpBody: followUpBody, fireDate: fire,
-                              seriesID: seriesID, nagIndex: index,
-                              eventTitle: eventTitle, isImportant: isImportant,
-                              repeatIntervalMinutes: settings.nagEnabled
-                                ? max(1, settings.nagIntervalMinutes) : 0)
-        }
+    private func rebuildSavedSchedule() async {
+        let store = Store()
+        await rebuild(shifts: store.shifts, reminders: store.reminders, settings: store.settings)
     }
 
     private func makeRequest(for occurrence: Occurrence) -> UNNotificationRequest {
@@ -271,51 +158,47 @@ final class Scheduler: ObservableObject {
         content.badge = 1
         content.categoryIdentifier = Self.categoryID
         if occurrence.isImportant { content.interruptionLevel = .timeSensitive }
-
         var info: [AnyHashable: Any] = [
-            Self.seriesKey: occurrence.seriesID,
-            Self.kindKey: occurrence.kind.rawValue,
+            "series": occurrence.seriesID, "kind": occurrence.kind.rawValue,
+            "dueDate": occurrence.dueDate.timeIntervalSince1970,
             "repeatIntervalMinutes": occurrence.repeatIntervalMinutes
         ]
-        if let eventTitle = occurrence.eventTitle { info[Self.titleKey] = eventTitle }
+        if let title = occurrence.eventTitle { info["eventTitle"] = title }
         content.userInfo = info
-
+        // Include seconds: relative voice reminders must not fire a minute early.
         let parts = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute], from: occurrence.fireDate)
-        return UNNotificationRequest(
-            identifier: "\(occurrence.seriesID)#\(occurrence.nagIndex)",
-            content: content,
-            trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
+            [.year, .month, .day, .hour, .minute, .second], from: occurrence.fireDate)
+        return UNNotificationRequest(identifier: "\(occurrence.seriesID)#\(occurrence.nagIndex)",
+                                     content: content,
+                                     trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
     }
 
     private func scheduleHousekeeping(after lastFire: Date?) async {
         guard let lastFire else { return }
-        let coverageEnd = min(lastFire, Date().addingTimeInterval(21 * 24 * 60 * 60))
-        guard let warn = Calendar.current.date(byAdding: .day, value: -2, to: coverageEnd),
-              warn > Date() else { return }
-
+        let coverageEnd = min(lastFire, Date().addingTimeInterval(21 * 86400))
+        // Short queues need a warning too, before their final notification.
+        let warn = max(Date().addingTimeInterval(60), coverageEnd.addingTimeInterval(-2 * 86400))
+        guard warn < lastFire else { return }
         let content = UNMutableNotificationContent()
         content.title = "DutyPing"
         content.body = String(localized: "Open the app to extend your reminder schedule.")
         content.sound = .default
-        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: warn)
-        try? await center.add(UNNotificationRequest(
-            identifier: Self.housekeepingID,
-            content: content,
-            trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)))
+        let parts = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second], from: warn)
+        do {
+            try await center.add(UNNotificationRequest(identifier: "housekeeping", content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)))
+        } catch { lastError = error.localizedDescription }
     }
-
-    // MARK: - Diagnostics
 
     struct Diagnostics {
         var authorizationStatus: UNAuthorizationStatus = .notDetermined
         var pendingCount = 0
         var upcoming: [UpcomingAlert] = []
-
+        var error: String?
         var isAuthorized: Bool {
             authorizationStatus == .authorized || authorizationStatus == .provisional
         }
-
         var authorizationLabel: String {
             switch authorizationStatus {
             case .authorized: return String(localized: "Allowed")
@@ -335,161 +218,129 @@ final class Scheduler: ObservableObject {
     }
 
     func diagnostics() async -> Diagnostics {
-        let notificationSettings = await center.notificationSettings()
+        await queueTail?.value
+        let settings = await center.notificationSettings()
         let pending = await center.pendingNotificationRequests()
         let upcoming = pending.compactMap { request -> UpcomingAlert? in
-            let fire: Date?
-            switch request.trigger {
-            case let calendar as UNCalendarNotificationTrigger: fire = calendar.nextTriggerDate()
-            case let interval as UNTimeIntervalNotificationTrigger: fire = interval.nextTriggerDate()
-            default: fire = nil
-            }
-            guard let fire else { return nil }
-            return UpcomingAlert(id: request.identifier,
-                                 label: request.content.title,
-                                 date: fire)
-        }
-        .sorted { $0.date < $1.date }
-
-        return Diagnostics(authorizationStatus: notificationSettings.authorizationStatus,
-                           pendingCount: pending.count,
-                           upcoming: Array(upcoming.prefix(8)))
+            guard request.identifier != "housekeeping",
+                  let fire = request.scheduledFireDate, fire > Date() else { return nil }
+            return UpcomingAlert(id: request.identifier, label: request.content.title, date: fire)
+        }.sorted { $0.date < $1.date }
+        return Diagnostics(authorizationStatus: settings.authorizationStatus,
+                           pendingCount: pending.count, upcoming: Array(upcoming.prefix(8)),
+                           error: lastError)
     }
 
     func sendTest(after seconds: TimeInterval = 10) {
-        let content = UNMutableNotificationContent()
-        content.title = String(localized: "Test reminder")
-        content.body = String(localized: "If you can see this, DutyPing can reach you.")
-        content.sound = .default
-        content.categoryIdentifier = Self.categoryID
-        center.add(UNNotificationRequest(
-            identifier: "test-\(UUID().uuidString)",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)))
+        enqueue {
+            let content = UNMutableNotificationContent()
+            content.title = String(localized: "Test reminder")
+            content.body = String(localized: "If you can see this, DutyPing can reach you.")
+            content.sound = .default
+            // Test notifications deliberately have no task-completion buttons.
+            do {
+                try await self.center.add(UNNotificationRequest(identifier: "test-\(UUID().uuidString)",
+                    content: content,
+                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)))
+            } catch { self.lastError = error.localizedDescription }
+            NotificationCenter.default.post(name: .dutyPingScheduleChanged, object: nil)
+        }
     }
-
-    // MARK: - Live geofence alerts
 
     func fireNow(kind: ReminderKind, reason: String, settings: Settings) {
-        let seriesID = "geo-\(kind.rawValue)-\(Int(Date().timeIntervalSince1970))"
-        let delays = followUpDelays(settings: settings)
-
-        for (index, delayMinutes) in delays.enumerated() {
-            let content = UNMutableNotificationContent()
-            content.title = reason
-            content.body = index == 0 ? kind.firstBody : kind.nagBody
-            content.sound = .default
-            content.badge = 1
-            content.categoryIdentifier = Self.categoryID
-            content.userInfo = [Self.seriesKey: seriesID,
-                                Self.kindKey: kind.rawValue,
-                                "repeatIntervalMinutes": settings.nagEnabled
-                                    ? max(1, settings.nagIntervalMinutes) : 0]
-            let delay = Double(delayMinutes) * 60
-            center.add(UNNotificationRequest(
-                identifier: "\(seriesID)#\(index)",
-                content: content,
-                trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, delay),
-                                                            repeats: false)))
+        enqueue {
+            guard !settings.isPaused, settings.geofenceEnabled else { return }
+            let series = "geo-\(kind.rawValue)-\(UUID().uuidString)"
+            let now = Date()
+            // Region bursts must not exceed the OS queue cap.
+            let pending = await self.center.pendingNotificationRequests()
+            let liveCount = pending.filter { $0.identifier.hasPrefix("geo-") || $0.identifier.hasPrefix("test-") }.count
+            let delays = ReminderPlanner.followUpDelays(settings: settings).prefix(max(0, 58 - liveCount))
+            self.center.removePendingNotificationRequests(withIdentifiers:
+                pending.filter { !$0.identifier.hasPrefix("geo-") && !$0.identifier.hasPrefix("test-") }.map(\.identifier))
+            for (index, delay) in delays.enumerated() {
+                let occurrence = Occurrence(kind: kind, title: reason, body: kind.firstBody,
+                    followUpBody: kind.nagBody, fireDate: now.addingTimeInterval(max(1, Double(delay) * 60)),
+                    dueDate: now, seriesID: series, nagIndex: index, eventTitle: nil,
+                    isImportant: true, repeatIntervalMinutes: settings.nagEnabled ? max(1, settings.nagIntervalMinutes) : 0)
+                do { try await self.center.add(self.makeRequest(for: occurrence)) }
+                catch { self.lastError = error.localizedDescription }
+            }
+            await self.rebuildSavedSchedule()
         }
     }
 
-    func handle(response: UNNotificationResponse) {
-        let info = response.notification.request.content.userInfo
-        let kind = info[Self.kindKey] as? String ?? ReminderKind.checkIn.rawValue
-        let eventTitle = info[Self.titleKey] as? String
-
-        switch response.actionIdentifier {
-        case Self.snoozeActionID:
-            if let seriesID = info[Self.seriesKey] as? String { cancelSeries(seriesID) }
-            snooze(kind: kind,
-                   title: response.notification.request.content.title,
-                   body: response.notification.request.content.body,
-                   eventTitle: eventTitle)
-            EventLog.shared.record(kind: kind, action: .snoozed, title: eventTitle)
-        case Self.doneActionID:
-            if let seriesID = info[Self.seriesKey] as? String {
-                AcknowledgementStore.shared.markCompleted(seriesID)
-                cancelSeries(seriesID)
-                LiveActivityManager.shared.end(seriesID: seriesID)
+    func handle(response: UNNotificationResponse) async {
+        await enqueue {
+            let request = response.notification.request
+            let info = request.content.userInfo
+            guard let series = info["series"] as? String,
+                  let kind = info["kind"] as? String else { return }
+            let title = info["eventTitle"] as? String
+            switch response.actionIdentifier {
+            case Self.snoozeActionID:
+                guard !AcknowledgementStore.shared.contains(series) else { return }
+                let until = Date().addingTimeInterval(600)
+                AcknowledgementStore.shared.snooze(series, until: until)
+                await self.cancelSeries(series)
+                if series.hasPrefix("geo-") {
+                    let settings = Store().settings
+                    if !settings.isPaused {
+                        let pending = await self.center.pendingNotificationRequests()
+                        let live = pending.filter { $0.identifier.hasPrefix("geo-") || $0.identifier.hasPrefix("test-") }
+                        self.center.removePendingNotificationRequests(withIdentifiers:
+                            pending.filter { !$0.identifier.hasPrefix("geo-") && !$0.identifier.hasPrefix("test-") }.map(\.identifier))
+                        let delays = ReminderPlanner.followUpDelays(settings: settings).prefix(max(0, 58 - live.count))
+                        for (index, delay) in delays.enumerated() {
+                            let content = request.content.mutableCopy() as! UNMutableNotificationContent
+                            content.userInfo["dueDate"] = until.timeIntervalSince1970
+                            do {
+                                try await self.center.add(UNNotificationRequest(identifier: "\(series)#\(index)", content: content,
+                                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 600 + Double(delay) * 60, repeats: false)))
+                            } catch { self.lastError = error.localizedDescription }
+                        }
+                    }
+                }
+                EventLog.shared.record(kind: kind, action: .snoozed, title: title)
+                await self.rebuildSavedSchedule()
+            case Self.doneActionID:
+                await self.completeNow(seriesID: series, kind: kind, title: title)
+            default:
+                EventLog.shared.record(kind: kind, action: .opened, title: title)
             }
-            center.setBadgeCount(0) { _ in }
-            EventLog.shared.record(kind: kind, action: .done, title: eventTitle)
-        default:
-            EventLog.shared.record(kind: kind, action: .opened, title: eventTitle)
-        }
+        }.value
     }
 
     func handleDeepLink(_ url: URL) {
         guard url.scheme == "dutyping", url.host == "complete",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let seriesID = components.queryItems?.first(where: { $0.name == "series" })?.value
-        else { return }
-        let kind = components.queryItems?.first(where: { $0.name == "kind" })?.value
-            ?? ReminderKind.personal.rawValue
+              let series = components.queryItems?.first(where: { $0.name == "series" })?.value,
+              !series.isEmpty else { return }
+        let kind = components.queryItems?.first(where: { $0.name == "kind" })?.value ?? "personal"
         let title = components.queryItems?.first(where: { $0.name == "title" })?.value
-        complete(seriesID: seriesID, kind: kind, title: title)
+        complete(seriesID: series, kind: kind, title: title)
     }
 
     func complete(seriesID: String, kind: String, title: String?) {
+        enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }
+    }
+
+    private func completeNow(seriesID: String, kind: String, title: String?) async {
+        guard !AcknowledgementStore.shared.contains(seriesID) else { return }
         AcknowledgementStore.shared.markCompleted(seriesID)
-        cancelSeries(seriesID)
+        await cancelSeries(seriesID)
         center.setBadgeCount(0) { _ in }
-        LiveActivityManager.shared.end(seriesID: seriesID)
+        await LiveActivityManager.shared.end(seriesID: seriesID)
         EventLog.shared.record(kind: kind, action: .done, title: title)
+        await rebuildSavedSchedule()
     }
 
-    private func snooze(kind: String, title: String, body: String,
-                        eventTitle: String?, minutes: Double = 10) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = kind == ReminderKind.personal.rawValue
-            ? String(format: String(localized: "Snoozed — %@"), title)
-            : String(format: String(localized: "Snoozed — %@"), body)
-        content.sound = .default
-        content.badge = 1
-        content.categoryIdentifier = Self.categoryID
-        let series = "snooze-\(Int(Date().timeIntervalSince1970))"
-        var info: [AnyHashable: Any] = [Self.seriesKey: series, Self.kindKey: kind]
-        if let eventTitle { info[Self.titleKey] = eventTitle }
-        content.userInfo = info
-
-        center.add(UNNotificationRequest(
-            identifier: "\(series)#0",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: minutes * 60,
-                                                        repeats: false)))
-    }
-
-    private func followUpDelays(settings: Settings) -> [Int] {
-        guard settings.nagEnabled else { return [0] }
-        let interval = max(1, settings.nagIntervalMinutes)
-        if settings.persistentFollowUps {
-            // Repeat at the exact selected interval first, then keep a sparse
-            // safety tail. iOS only allows 64 pending local notifications, so
-            // an infinite per-minute queue isn't possible without a server.
-            let regular = Array(0...15)
-            let safetyTail = [20, 30, 45, 60, 90, 120, 180, 240, 360, 480]
-            return (regular + safetyTail).map { $0 * interval }
-        }
-        return (0...max(0, settings.nagCount)).map { $0 * interval }
-    }
-
-    private func cancelSeries(_ seriesID: String) {
-        center.getPendingNotificationRequests { requests in
-            let identifiers = requests.map(\.identifier)
-                .filter { $0.hasPrefix("\(seriesID)#") }
-            self.center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            self.syncLiveActivityAfterCancellation()
-        }
-        center.getDeliveredNotifications { notifications in
-            let identifiers = notifications.map { $0.request.identifier }
-                .filter { $0.hasPrefix("\(seriesID)#") }
-            self.center.removeDeliveredNotifications(withIdentifiers: identifiers)
-        }
-    }
-
-    private func syncLiveActivityAfterCancellation() {
-        LiveActivityManager.shared.syncToNextReminder()
+    private func cancelSeries(_ series: String) async {
+        let pending = await center.pendingNotificationRequests()
+        center.removePendingNotificationRequests(withIdentifiers:
+            pending.filter { $0.content.userInfo["series"] as? String == series }.map(\.identifier))
+        let delivered = await center.deliveredNotifications()
+        center.removeDeliveredNotifications(withIdentifiers:
+            delivered.filter { $0.request.content.userInfo["series"] as? String == series }.map { $0.request.identifier })
     }
 }

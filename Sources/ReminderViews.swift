@@ -18,6 +18,7 @@ struct ReminderRow: View {
     let onTap: () -> Void
     let onToggle: (Bool) -> Void
     let onDelete: () -> Void
+    let onComplete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -35,6 +36,7 @@ struct ReminderRow: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 5) {
                             Text(reminder.cleanTitle)
+                                .strikethrough(reminder.isCompleted)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
                             if reminder.priority == .important {
@@ -67,13 +69,18 @@ struct ReminderRow: View {
             }
             .buttonStyle(.plain)
 
-            Toggle("", isOn: Binding(get: { reminder.isEnabled }, set: onToggle))
+            Toggle("", isOn: Binding(get: { reminder.isEnabled && !reminder.isCompleted }, set: onToggle))
                 .labelsHidden()
                 .tint(Theme.accent)
         }
         .padding(.vertical, 3)
         .opacity(reminder.isEnabled ? 1 : 0.48)
         .contextMenu {
+            if reminder.repeatRule == .never && !reminder.isCompleted {
+                Button(action: onComplete) {
+                    Label("Confirm done", systemImage: "checkmark.circle.fill")
+                }
+            }
             Button(action: onTap) {
                 Label("Edit reminder", systemImage: "pencil")
             }
@@ -84,6 +91,7 @@ struct ReminderRow: View {
     }
 
     private var dueTint: Color {
+        if reminder.isCompleted { return Theme.good }
         if !reminder.hasSchedule { return Theme.warn }
         return reminder.repeatRule == .never && reminder.dueDate < Date() ? Theme.warn : .secondary
     }
@@ -253,7 +261,7 @@ struct ReminderEditor: View {
         let selected = draft.category == category
         return Button {
             Haptics.tap()
-            withAnimation(.snappy) { draft.category = category }
+            withAnimation(.easeInOut(duration: 0.2)) { draft.category = category }
         } label: {
             VStack(spacing: 7) {
                 Image(systemName: category.icon)

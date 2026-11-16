@@ -168,6 +168,14 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     var completedChecklistItems: [String]?
     var source: ReminderSource?
 
+    func seriesID(for date: Date) -> String {
+        "reminder-\(id.uuidString)-\(Int(date.timeIntervalSince1970))"
+    }
+
+    var isCompleted: Bool {
+        repeatRule == .never && AcknowledgementStore.shared.contains(seriesID(for: dueDate))
+    }
+
     var hasSchedule: Bool {
         get { scheduleEnabled ?? true }
         set { scheduleEnabled = newValue }
@@ -204,6 +212,7 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     }
 
     var summary: String {
+        if isCompleted { return String(localized: "Completed") }
         if !hasSchedule { return String(localized: "Inbox · choose a time later") }
         if repeatRule == .never {
             return dueDate.formatted(date: .abbreviated, time: .shortened)
