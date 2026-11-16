@@ -31,21 +31,26 @@ final class LiveActivityManager {
         let pending = await center.pendingNotificationRequests()
         let delivered = await center.deliveredNotifications()
         let now = Date()
+        let store = Store()
         var candidates = (pending + delivered.map(\.request)).compactMap { request -> ActivityCandidate? in
             guard let series = request.content.userInfo["series"] as? String,
                   !AcknowledgementStore.shared.contains(series) else { return nil }
             let stamp = request.content.userInfo["activityDate"] as? TimeInterval
                 ?? request.content.userInfo["dueDate"] as? TimeInterval
-            guard let due = stamp.map({ Date(timeIntervalSince1970: $0) }) ?? request.scheduledFireDate else { return nil }
+            let kind = request.content.userInfo["kind"] as? String ?? "personal"
+            let expected = ReminderPresentationPolicy.currentDate(seriesID: series, kind: kind,
+                reminders: store.reminders, shifts: store.shifts,
+                snoozedUntil: AcknowledgementStore.shared.snoozedUntil(series))
+            if (series.hasPrefix("shift-") || series.hasPrefix("reminder-")) && expected == nil { return nil }
+            guard let due = expected ?? stamp.map({ Date(timeIntervalSince1970: $0) }) ?? request.scheduledFireDate else { return nil }
             return ActivityCandidate(seriesID: series,
-                                     kind: request.content.userInfo["kind"] as? String ?? "personal",
+                                     kind: kind,
                                      title: request.content.userInfo["eventTitle"] as? String ?? request.content.title,
                                      dueDate: due,
                                      repeatIntervalMinutes: request.content.userInfo["repeatIntervalMinutes"] as? Int ?? 0)
         }
 
         // Dismissing a banner must not dismiss an unconfirmed, valid activity.
-        let store = Store()
         for activity in current where activity.activityState == .active || activity.activityState == .stale {
             let series = activity.attributes.seriesID
             let expected = ReminderPresentationPolicy.currentDate(seriesID: series, kind: activity.attributes.kind,

@@ -21,6 +21,7 @@ enum ReminderPresentationPolicy {
            let stamp = seriesID.split(separator: "-").last.flatMap({ TimeInterval($0) }) {
             if let snoozedUntil { return snoozedUntil }
             let day = Date(timeIntervalSince1970: stamp)
+            guard Calendar.current.component(.weekday, from: day) == shift.weekday else { return nil }
             if kind == ReminderKind.checkIn.rawValue { return shift.start.date(on: day) }
             let endDay = shift.crossesMidnight ? Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day : day
             return shift.end.date(on: endDay)

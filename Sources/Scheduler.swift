@@ -144,12 +144,13 @@ final class Scheduler: ObservableObject {
             if settings.isPaused || AcknowledgementStore.shared.contains(series) { return true }
             if series.hasPrefix("geo-") && !settings.geofenceEnabled { return true }
             let info = notification.request.content.userInfo
-            if series.hasPrefix("shift-"),
-               let expected = ReminderPresentationPolicy.currentDate(seriesID: series,
+            if series.hasPrefix("shift-") {
+                guard let expected = ReminderPresentationPolicy.currentDate(seriesID: series,
                     kind: info["kind"] as? String ?? "", reminders: reminders, shifts: shifts,
-                    snoozedUntil: AcknowledgementStore.shared.snoozedUntil(series)),
-               let stamp = info["activityDate"] as? TimeInterval {
-                return abs(expected.timeIntervalSince1970 - stamp) >= 1
+                    snoozedUntil: AcknowledgementStore.shared.snoozedUntil(series)) else { return true }
+                if let stamp = info["activityDate"] as? TimeInterval {
+                    return abs(expected.timeIntervalSince1970 - stamp) >= 1
+                }
             }
             return series.hasPrefix("reminder-") &&
                 !reminders.contains { $0.ownsSeries(series) }

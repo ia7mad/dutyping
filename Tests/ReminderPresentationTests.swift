@@ -123,4 +123,15 @@ final class ReminderPresentationTests: XCTestCase {
         XCTAssertEqual(ReminderPresentationPolicy.currentDate(seriesID: series, kind: "checkIn",
             reminders: [], shifts: [shift], snoozedUntil: snooze), snooze)
     }
+
+    func testDeletedOrMovedShiftCannotKeepAnOldActivity() {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: now)
+        var shift = Shift(weekday: calendar.component(.weekday, from: day),
+                          start: TimeOfDay(hour: 7, minute: 25), end: TimeOfDay(hour: 16, minute: 0))
+        let series = "shift-\(shift.id.uuidString)-in-\(Int(day.timeIntervalSince1970))"
+        XCTAssertNil(ReminderPresentationPolicy.currentDate(seriesID: series, kind: "checkIn", reminders: [], shifts: []))
+        shift.weekday = shift.weekday % 7 + 1
+        XCTAssertNil(ReminderPresentationPolicy.currentDate(seriesID: series, kind: "checkIn", reminders: [], shifts: [shift]))
+    }
 }
