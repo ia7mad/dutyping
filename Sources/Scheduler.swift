@@ -109,7 +109,8 @@ final class Scheduler: ObservableObject {
         lastError = nil
         let pending = await center.pendingNotificationRequests()
         let preserved = pending.filter {
-            $0.identifier.hasPrefix("test-") || ($0.identifier.hasPrefix("geo-") && !settings.isPaused)
+            $0.identifier.hasPrefix("test-") ||
+                ($0.identifier.hasPrefix("geo-") && settings.geofenceEnabled && !settings.isPaused)
         }
         let preservedIDs = Set(preserved.map(\.identifier))
         center.removePendingNotificationRequests(withIdentifiers:
@@ -136,6 +137,7 @@ final class Scheduler: ObservableObject {
         let obsolete = delivered.filter { notification in
             guard let series = notification.request.content.userInfo["series"] as? String else { return false }
             if settings.isPaused || AcknowledgementStore.shared.contains(series) { return true }
+            if series.hasPrefix("geo-") && !settings.geofenceEnabled { return true }
             return series.hasPrefix("reminder-") &&
                 !reminders.contains { $0.ownsSeries(series) }
         }
@@ -149,7 +151,7 @@ final class Scheduler: ObservableObject {
         await rebuild(shifts: store.shifts, reminders: store.reminders, settings: store.settings)
     }
 
-    private func makeRequest(for occurrence: Occurrence) -> UNNotificationRequest {
+    func makeRequest(for occurrence: Occurrence) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = occurrence.title
         content.body = occurrence.nagIndex == 0 ? occurrence.body : occurrence.followUpBody

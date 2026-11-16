@@ -137,6 +137,14 @@ struct ContentView: View {
                 store.objectWillChange.send()
                 refresh()
             }
+            .task(id: diagnostics.upcoming.first?.id) {
+                guard let next = diagnostics.upcoming.first else { return }
+                let delay = max(0, next.date.timeIntervalSinceNow + 0.2)
+                do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+                catch { return }
+                guard scenePhase == .active else { return }
+                await reloadDiagnostics()
+            }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 _ = await Scheduler.shared.requestAuthorization()

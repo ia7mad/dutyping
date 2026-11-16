@@ -2,8 +2,8 @@
 
 A private, on-device reminder assistant for iPhone. DutyPing began as a way to
 remember work check-in and check-out, and now also handles everyday personal
-reminders. There is no network, server, analytics, or account; everything stays
-on the phone.
+reminders. Reminders and recordings stay on the phone. No server or account is
+required; optional DeepSeek organization sends captured text to its API.
 
 ## What it does
 
@@ -100,6 +100,7 @@ automatically — the Status section shows the date reminders are covered throug
 | `Sources/Models.swift` | Shift, reminder, schedule, and settings models |
 | `Sources/Store.swift` | JSON persistence; every write reschedules |
 | `Sources/Scheduler.swift` | Builds the unified reminder queue |
+| `Sources/ReminderPlanner.swift` | Testable calendar, follow-up, and snooze rules |
 | `Sources/LiveActivityManager.swift` | Starts and closes the next local Live Activity |
 | `LiveActivity/` | Lock Screen and Dynamic Island presentation |
 | `Sources/GeofenceManager.swift` | Workplace region monitoring |
@@ -119,3 +120,36 @@ the assistant on. The key is stored in the iOS Keychain and is never committed
 to this repository. Only the captured text is sent to DeepSeek; recordings,
 location, history, and notification scheduling remain local. If the service is
 offline or rejects a request, DutyPing automatically uses its local parser.
+
+## Version 2.4 reliability fixes
+
+- Opening the app after a deadline retains that occurrence's remaining follow-ups.
+- Overnight shift checkout is retained when the app opens after midnight.
+- Snooze keeps the original occurrence identity and survives app relaunches.
+- Completed one-time tasks show **Completed** in the list. Turn the task back on
+  to reopen it; recurring confirmations close only that occurrence.
+- Tapping the Live Activity opens the app. Only **Confirm** completes a task.
+- Deleted or disabled tasks remove their pending alerts, delivered banners, and
+  Live Activity. Moving a task to a new time invalidates its old occurrence.
+- Countdown text stops at zero and the dashboard advances to the next alert.
+- Queue mutations run serially, and relative reminders retain their seconds.
+
+Live Activities start locally while the app is in the foreground and last up to
+the system's activity limit. Opening the app refreshes the next eligible activity;
+local notifications continue independently while it is closed. Automatic remote
+starts require an APNs service, which this app does not include. Persistent
+follow-ups use a finite notification queue; reopening the app replenishes it.
+
+Regression tests cover overdue tasks, recurrence, overnight shifts, queue
+capacity, snooze persistence, completion, date edits, second precision, upgrades,
+and Arabic capture. GitHub Actions builds the IPA and runs these tests on an
+available iPhone simulator before publishing the installation artifact.
+
+Before installing over your daily-use copy, check these flows on an iPhone:
+
+1. Schedule a reminder a minute ahead; leave and reopen the app after it fires.
+2. Snooze it, reopen the app, and confirm that its original follow-ups stay muted.
+3. Tap the Dynamic Island body, then its explicit confirmation button separately.
+4. Edit, disable, and delete an active task; verify the old activity disappears.
+5. Complete a one-time task, relaunch, and verify its completed state remains.
+6. Pause reminders and cross the workplace boundary; verify no location alert fires.
