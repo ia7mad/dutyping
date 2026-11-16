@@ -117,18 +117,23 @@ final class Scheduler: ObservableObject {
         center.removePendingNotificationRequests(withIdentifiers:
             pending.map(\.identifier).filter { !preservedIDs.contains($0) })
 
-        let occurrences = ReminderPlanner().plan(shifts: shifts, reminders: reminders,
+        var occurrences = ReminderPlanner().plan(shifts: shifts, reminders: reminders,
                                                 settings: settings,
                                                 limit: max(0, 58 - preserved.count))
         let alarms = await AlarmController.shared.reconcile(occurrences: occurrences,
                                                             enabled: settings.usesSilentModeAlarms,
-                                                            isPaused: settings.isPaused)
+                                                            isPaused: settings.isPaused,
+                                                            resumeAfter: settings.pausedUntil,
+                                                            persistentFollowUps: settings.persistentFollowUps)
+        occurrences = ReminderPresentationPolicy.alignNotifications(occurrences, alarms: alarms)
         var added: [Occurrence] = []
         for occurrence in occurrences {
             guard !AcknowledgementStore.shared.contains(occurrence.seriesID) else { continue }
             do {
                 try await center.add(makeRequest(for: occurrence,
-                    hasStrongAlarm: occurrence.nagIndex == 0 && alarms.contains(occurrence.seriesID)))
+                    hasStrongAlarm: alarms[occurrence.seriesID].map {
+                        abs($0.timeIntervalSince(occurrence.fireDate)) < 1
+                    } ?? false))
                 added.append(occurrence)
             } catch {
                 lastError = error.localizedDescription
@@ -314,17 +319,46 @@ final class Scheduler: ObservableObject {
     }
 
     func handleDeepLink(_ url: URL) {
-        guard url.scheme == "dutyping", url.host == "complete",
+        guard url.scheme == "dutyping", url.host == "complete" || url.host == "snooze",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let series = components.queryItems?.first(where: { $0.name == "series" })?.value,
               !series.isEmpty else { return }
         let kind = components.queryItems?.first(where: { $0.name == "kind" })?.value ?? "personal"
         let title = components.queryItems?.first(where: { $0.name == "title" })?.value
+        if url.host == "snooze" {
+            enqueue {
+                await self.snoozeNow(seriesID: series, kind: kind,
+                    title: title ?? String(localized: "Reminder"), eventTitle: title)
+            }
+            return
+        }
         complete(seriesID: series, kind: kind, title: title)
     }
 
     func complete(seriesID: String, kind: String, title: String?) {
         enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }
+    }
+
+    func handleNativeAlarmAction(_ action: AlarmControlAction, seriesID: String,
+                                  kind: String, title: String) async {
+        await enqueue {
+            guard kind != "test", !seriesID.isEmpty else { return }
+            switch action {
+            case .silence:
+                guard !AcknowledgementStore.shared.contains(seriesID) else { return }
+                AcknowledgementStore.shared.markAlarmDismissed(seriesID)
+                EventLog.shared.record(kind: kind, action: .silenced, title: title)
+                // Keep the Live Activity and local follow-ups; only re-arm the
+                // next native sound at the user's selected repeat interval.
+                await self.rebuildSavedSchedule(fromLiveActivityIntent: true)
+            case .confirm:
+                await self.completeNow(seriesID: seriesID, kind: kind, title: title,
+                                       fromLiveActivityIntent: true)
+            case .snooze:
+                await self.snoozeNow(seriesID: seriesID, kind: kind, title: title,
+                    eventTitle: kind == "personal" ? title : nil, fromLiveActivityIntent: true)
+            }
+        }.value
     }
 
     func completeAsync(seriesID: String, kind: String, title: String?, fromLiveActivityIntent: Bool = false) async {

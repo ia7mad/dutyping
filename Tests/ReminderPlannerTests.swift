@@ -149,7 +149,7 @@ final class ReminderPlannerTests: XCTestCase {
         let reminder = PersonalReminder(title: "Overdue", dueDate: time(0))
         let reopenDate = time(23).addingTimeInterval(3 * 86400)
         let result = planner().plan(shifts: [], reminders: [reminder], settings: Settings(), now: reopenDate)
-        XCTAssertEqual(result.first?.fireDate, reopenDate.addingTimeInterval(1))
+        XCTAssertEqual(result.first?.fireDate, reopenDate.addingTimeInterval(5 * 60))
     }
 
     func testZeroRemainingCapacityDoesNotScheduleAnything() {

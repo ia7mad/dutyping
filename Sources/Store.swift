@@ -95,7 +95,11 @@ final class Store: ObservableObject {
     func setReminderEnabled(id: UUID, enabled: Bool) {
         guard let index = reminders.firstIndex(where: { $0.id == id }) else { return }
         if enabled {
-            AcknowledgementStore.shared.reopen(reminders[index].seriesID(for: reminders[index].dueDate))
+            let series = reminders[index].seriesID(for: reminders[index].dueDate)
+            AcknowledgementStore.shared.reopen(series)
+            if reminders[index].dueDate < Date(), settings.nagEnabled {
+                AcknowledgementStore.shared.markAlarmDismissed(series)
+            }
         }
         reminders[index].isEnabled = enabled
         commit()

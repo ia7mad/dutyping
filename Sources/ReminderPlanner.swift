@@ -140,9 +140,11 @@ struct ReminderPlanner {
         // runs out. Repeating shifts retain a bounded lookback instead.
         if events.isEmpty, settings.nagEnabled, settings.persistentFollowUps,
            recoverOverdue, effectiveBase < now {
-            events = delays.enumerated().map { index, minutes in
+            let interval = Double(min(30, max(1, settings.nagIntervalMinutes))) * 60
+            let firstIndex = max(1, Int(floor(now.timeIntervalSince(effectiveBase) / interval)) + 1)
+            events = (firstIndex..<(firstIndex + delays.count)).map { index in
                 Occurrence(kind: kind, title: title, body: body, followUpBody: followUpBody,
-                           fireDate: now.addingTimeInterval(Double(minutes) * 60 + 1),
+                           fireDate: effectiveBase.addingTimeInterval(Double(index) * interval),
                            dueDate: effectiveBase, seriesID: seriesID, nagIndex: index,
                            eventTitle: eventTitle, isImportant: isImportant,
                            repeatIntervalMinutes: min(30, max(1, settings.nagIntervalMinutes)))

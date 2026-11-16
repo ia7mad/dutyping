@@ -8,6 +8,8 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(attributes.openURL.host, "open")
         XCTAssertEqual(attributes.completionURL.host, "complete")
         XCTAssertNotEqual(attributes.openURL, attributes.completionURL)
+        XCTAssertEqual(attributes.snoozeURL.host, "snooze")
+        XCTAssertNotEqual(attributes.snoozeURL, attributes.completionURL)
         let query = try XCTUnwrap(URLComponents(url: attributes.completionURL, resolvingAgainstBaseURL: false))
         XCTAssertEqual(query.queryItems?.first { $0.name == "title" }?.value, attributes.title)
         XCTAssertEqual(query.queryItems?.first { $0.name == "series" }?.value, attributes.seriesID)

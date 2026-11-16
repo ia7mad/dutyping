@@ -300,12 +300,14 @@ struct DutyEvent: Codable, Identifiable, Hashable {
         case done
         case snoozed
         case opened
+        case silenced
 
         var label: String {
             switch self {
             case .done: return String(localized: "Confirmed")
             case .snoozed: return String(localized: "Snoozed")
             case .opened: return String(localized: "Opened")
+            case .silenced: return String(localized: "Sound stopped · task still active")
             }
         }
 
@@ -314,6 +316,7 @@ struct DutyEvent: Codable, Identifiable, Hashable {
             case .done: return "checkmark.circle.fill"
             case .snoozed: return "moon.zzz.fill"
             case .opened: return "hand.tap.fill"
+            case .silenced: return "bell.slash.fill"
             }
         }
     }

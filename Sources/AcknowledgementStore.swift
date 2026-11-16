@@ -9,6 +9,7 @@ final class AcknowledgementStore {
     private let key = "completedReminderSeries"
     private let lock = NSLock()
     private let snoozeKey = "snoozedReminderSeries"
+    private let dismissedAlarmKey = "dismissedAlarmSeries"
 
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
@@ -28,6 +29,7 @@ final class AcknowledgementStore {
         var snoozes = defaults.dictionary(forKey: snoozeKey) ?? [:]
         snoozes.removeValue(forKey: seriesID)
         defaults.set(snoozes, forKey: snoozeKey)
+        clearDismissalUnsafe(seriesID)
     }
 
     func reopen(_ seriesID: String) {
@@ -36,6 +38,7 @@ final class AcknowledgementStore {
         var saved = records()
         saved.removeValue(forKey: seriesID)
         defaults.set(saved, forKey: key)
+        clearDismissalUnsafe(seriesID)
     }
 
     func snooze(_ seriesID: String, until date: Date) {
@@ -44,6 +47,30 @@ final class AcknowledgementStore {
         var saved = defaults.dictionary(forKey: snoozeKey) ?? [:]
         saved[seriesID] = date.timeIntervalSince1970
         defaults.set(saved, forKey: snoozeKey)
+        clearDismissalUnsafe(seriesID)
+    }
+
+    /// Silencing a native alarm is deliberately separate from completing its task.
+    func markAlarmDismissed(_ seriesID: String, at date: Date = Date()) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard records()[seriesID] == nil else { return }
+        var saved = defaults.dictionary(forKey: dismissedAlarmKey) ?? [:]
+        saved[seriesID] = date.timeIntervalSince1970
+        defaults.set(saved, forKey: dismissedAlarmKey)
+    }
+
+    func alarmDismissedAt(_ seriesID: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let value = defaults.dictionary(forKey: dismissedAlarmKey)?[seriesID] as? NSNumber else { return nil }
+        return Date(timeIntervalSince1970: value.doubleValue)
+    }
+
+    private func clearDismissalUnsafe(_ seriesID: String) {
+        var saved = defaults.dictionary(forKey: dismissedAlarmKey) ?? [:]
+        saved.removeValue(forKey: seriesID)
+        defaults.set(saved, forKey: dismissedAlarmKey)
     }
 
     func snoozedUntil(_ seriesID: String) -> Date? {

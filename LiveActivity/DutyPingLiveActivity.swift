@@ -48,6 +48,12 @@ struct DutyPingLiveActivity: Widget {
                             }
                         }
                         Spacer()
+                        Link(destination: context.attributes.snoozeURL) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.body.weight(.semibold))
+                                .padding(8)
+                        }
+                        .accessibilityLabel("Snooze 10 min")
                         Link(destination: context.attributes.completionURL) {
                             Label("Confirm", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.bold))
@@ -113,10 +119,18 @@ struct DutyPingLiveActivity: Widget {
                 countdown(context)
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(.white)
-                Link(destination: context.attributes.completionURL) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.mint)
+                HStack(spacing: 10) {
+                    Link(destination: context.attributes.snoozeURL) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityLabel("Snooze 10 min")
+                    Link(destination: context.attributes.completionURL) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.mint)
+                    }
                 }
             }
         }

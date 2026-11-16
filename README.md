@@ -163,9 +163,11 @@ Snooze changes the displayed deadline. An active overdue task stays selected
 until confirmation, within iOS's maximum Live Activity duration.
 
 On **iOS 26 or later**, enable **Smart alerts → Sound in Silent Mode** and grant
-the system Alarms permission. AlarmKit delivers one strong alarm at the configured
-reminder deadline through Silent Mode and Focus. Follow-ups remain ordinary
-notifications. Alarm sound and vibration follow system settings; DutyPing does
+the system Alarms permission. AlarmKit delivers a strong alarm at the configured
+reminder deadline through Silent Mode and Focus. Stopping its sound leaves the
+task active; when follow-ups are enabled it arms the next alarm at the selected
+repeat interval. Only explicit confirmation completes the task. Alarm sound and
+vibration follow system settings; DutyPing does
 not override a person's disabled haptics. The feature is off until enabled, and
 ordinary notifications remain available if permission is denied or iOS is older.
 Use **Test strong alarm in 10 seconds** to verify it on your iPhone. No Critical
@@ -192,3 +194,26 @@ the app, and verify there is no Island until ten minutes before its actual start
 Turn on Silent Mode, enable strong alarms, and test the alarm on a locked phone.
 Try confirmation and snooze from the native alarm, and run voice capture both
 with DutyPing closed and already open.
+
+## Version 2.6: stopping sound is not completion
+
+- The native alarm's **× / Stop sound** action stops only the current sound.
+  It keeps the task, Dynamic Island, and pending follow-ups active.
+- **Confirm done** is a separate native alarm action. It closes the occurrence
+  and cancels both its remaining notifications and its next native alarm.
+- With persistent follow-ups and a two-minute interval, closing the alarm re-arms
+  it on the next two-minute boundary. Successive dismissals do not lengthen the
+  selected interval, even after the normal notification safety tail becomes sparse.
+- With finite follow-ups, the selected count remains the limit. Disabling nagging
+  prevents another native alarm after closing the sound.
+- Snooze is available from the reminder notification and the Live Activity's clock
+  button. It postpones the same task for ten minutes and resets the repeat state.
+- Existing native alarm configurations are refreshed during upgrade, and legacy
+  stop callbacks also stop sound without confirming a task.
+
+Tasks already marked completed by an older version stay completed; DutyPing cannot
+distinguish an accidental old stop from an intentional completion. Turn an affected
+task back on once to resume its reminders. This avoids reopening genuinely finished
+tasks. Test on a locked iPhone: choose a two-minute repeat, close the first alarm
+using ×, verify the task stays active and rings again, then use **Confirm done**
+and verify all repeats stop. Also test snooze and turning follow-ups off.

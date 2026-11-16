@@ -17,9 +17,17 @@ struct ReminderActivityAttributes: ActivityAttributes {
     var openURL: URL { URL(string: "dutyping://open")! }
 
     var completionURL: URL {
+        actionURL(host: "complete")
+    }
+
+    var snoozeURL: URL {
+        actionURL(host: "snooze")
+    }
+
+    private func actionURL(host: String) -> URL {
         var components = URLComponents()
         components.scheme = "dutyping"
-        components.host = "complete"
+        components.host = host
         components.queryItems = [
             URLQueryItem(name: "series", value: seriesID),
             URLQueryItem(name: "kind", value: kind),

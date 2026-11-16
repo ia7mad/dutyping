@@ -603,7 +603,7 @@ struct ContentView: View {
                         }
                     }))
                     .tint(Theme.accent)
-                Text("One strong alarm at the deadline. Follow-ups stay as normal notifications. Haptics follow iPhone settings.")
+                Text("Stopping the sound keeps your task active. With follow-ups enabled, the alarm returns at your repeat interval until you confirm. Haptics follow iPhone settings.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text(AlarmController.shared.authorizationLabel)
                     .font(.caption).foregroundStyle(.secondary)

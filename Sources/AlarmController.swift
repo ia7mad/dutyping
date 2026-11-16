@@ -16,6 +16,37 @@ enum AlarmIdentity {
     }
 }
 
+enum AlarmControlAction: String, Equatable {
+    case silence
+    case confirm
+    case snooze
+}
+
+enum AlarmButtonRole {
+    case systemStop
+    case confirm
+    case snooze
+
+    var action: AlarmControlAction {
+        switch self {
+        case .systemStop: return .silence
+        case .confirm: return .confirm
+        case .snooze: return .snooze
+        }
+    }
+}
+
+struct ManagedAlarmRecord: Codable, Equatable {
+    let seriesID: String
+    let kind: String
+    let title: String
+    let dueDate: Date
+    var fireDate: Date? = nil
+    var configurationVersion: Int? = nil
+    var scheduledDate: Date { fireDate ?? dueDate }
+    var id: UUID { AlarmIdentity.id(for: seriesID) }
+}
+
 #if canImport(AlarmKit)
 @available(iOS 26.0, *)
 struct DutyPingAlarmMetadata: AlarmMetadata {
@@ -31,13 +62,7 @@ final class AlarmController {
     private let registryKey = "dutyping.managedAlarms"
     private(set) var lastError: String?
 
-    private struct Record: Codable, Equatable {
-        let seriesID: String
-        let kind: String
-        let title: String
-        let dueDate: Date
-        var id: UUID { AlarmIdentity.id(for: seriesID) }
-    }
+    private typealias Record = ManagedAlarmRecord
 
     var isSupported: Bool {
         #if canImport(AlarmKit)
@@ -70,7 +95,8 @@ final class AlarmController {
         return false
     }
 
-    func reconcile(occurrences: [Occurrence], enabled: Bool, isPaused: Bool = false) async -> Set<String> {
+    func reconcile(occurrences: [Occurrence], enabled: Bool, isPaused: Bool = false,
+                   resumeAfter: Date? = nil, persistentFollowUps: Bool = false) async -> [String: Date] {
         lastError = nil
         #if canImport(AlarmKit)
         if #available(iOS 26.0, *) {
@@ -78,10 +104,14 @@ final class AlarmController {
             var saved = records()
             let existing = Set(((try? manager.alarms) ?? []).map(\.id))
             let allowed = enabled && manager.authorizationState == .authorized
-            let desiredEvents = allowed ? ReminderPresentationPolicy.alarmOccurrences(occurrences, now: Date()) : []
+            let desiredEvents = allowed ? ReminderPresentationPolicy.alarmOccurrences(occurrences,
+                now: max(Date(), resumeAfter ?? .distantPast),
+                dismissedAt: { AcknowledgementStore.shared.alarmDismissedAt($0) },
+                persistentFollowUps: persistentFollowUps) : []
             var desired = Dictionary(uniqueKeysWithValues: desiredEvents.map {
                 ($0.seriesID, Record(seriesID: $0.seriesID, kind: $0.kind.rawValue,
-                                    title: $0.title, dueDate: $0.dueDate))
+                                    title: $0.title, dueDate: $0.dueDate,
+                                    fireDate: $0.fireDate, configurationVersion: 2))
             })
             // Keep an explicit test alarm until it fires; routine rebuilds must
             // not cancel the user's test halfway through its ten seconds.
@@ -90,10 +120,15 @@ final class AlarmController {
             }
             // Opening the app must not stop a currently ringing alarm.
             let store = Store()
-            for (series, record) in saved where allowed && !isPaused && record.dueDate <= Date() && existing.contains(record.id) {
+            for (series, record) in saved where allowed && !isPaused && record.scheduledDate <= Date() && existing.contains(record.id) {
                 let valid = series == "test-alarm" || store.reminders.contains { $0.ownsSeries(series) } ||
                     store.shifts.contains { $0.isEnabled && series.hasPrefix("shift-\($0.id.uuidString)-") }
-                if valid && !AcknowledgementStore.shared.contains(series) { desired[series] = record }
+                let dismissed = AcknowledgementStore.shared.alarmDismissedAt(series)
+                let sameDeadline = desired[series].map { $0.dueDate == record.dueDate } ?? true
+                if valid && sameDeadline && !AcknowledgementStore.shared.contains(series) &&
+                    (dismissed == nil || dismissed! < record.scheduledDate) {
+                    desired[series] = record
+                }
             }
             for (series, record) in saved where desired[series] != record {
                 do {
@@ -102,16 +137,16 @@ final class AlarmController {
                 }
                 catch { lastError = error.localizedDescription }
             }
-            var covered = Set<String>()
+            var covered: [String: Date] = [:]
             for (series, record) in desired {
                 if saved[series] == record && existing.contains(record.id) {
-                    covered.insert(series)
+                    covered[series] = record.scheduledDate
                     continue
                 }
                 do {
                     try await schedule(record)
                     saved[series] = record
-                    covered.insert(series)
+                    covered[series] = record.scheduledDate
                 } catch { lastError = error.localizedDescription }
             }
             save(saved)
@@ -119,7 +154,7 @@ final class AlarmController {
             return covered
         }
         #endif
-        return []
+        return [:]
     }
 
     func sendTest() async {
@@ -144,15 +179,17 @@ final class AlarmController {
     private func schedule(_ record: Record) async throws {
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: record.title),
-            stopButton: AlarmButton(text: "Confirm done", textColor: .white, systemImageName: "checkmark.circle.fill"),
-            secondaryButton: record.kind == "test" ? nil : AlarmButton(text: "Snooze 10 min", textColor: .white, systemImageName: "clock.arrow.circlepath"),
+            stopButton: AlarmButton(text: "Stop sound", textColor: .white, systemImageName: "bell.slash.fill"),
+            secondaryButton: record.kind == "test" ? nil : AlarmButton(text: "Confirm done", textColor: .white, systemImageName: "checkmark.circle.fill"),
             secondaryButtonBehavior: record.kind == "test" ? nil : .custom)
         let attributes = AlarmAttributes(presentation: AlarmPresentation(alert: alert),
             metadata: DutyPingAlarmMetadata(seriesID: record.seriesID), tintColor: Color.indigo)
-        let config = AlarmManager.AlarmConfiguration.alarm(schedule: .fixed(record.dueDate),
+        let config = AlarmManager.AlarmConfiguration.alarm(schedule: .fixed(record.scheduledDate),
             attributes: attributes,
-            stopIntent: ConfirmDutyPingAlarmIntent(seriesID: record.seriesID, kind: record.kind, reminderTitle: record.title),
-            secondaryIntent: record.kind == "test" ? nil : SnoozeDutyPingAlarmIntent(seriesID: record.seriesID, kind: record.kind, reminderTitle: record.title),
+            stopIntent: DutyPingAlarmControlIntent(action: AlarmButtonRole.systemStop.action,
+                seriesID: record.seriesID, kind: record.kind, reminderTitle: record.title),
+            secondaryIntent: record.kind == "test" ? nil : DutyPingAlarmControlIntent(action: AlarmButtonRole.confirm.action,
+                seriesID: record.seriesID, kind: record.kind, reminderTitle: record.title),
             sound: .default)
         _ = try await AlarmManager.shared.schedule(id: record.id, configuration: config)
     }

@@ -229,6 +229,11 @@
 
 /* Weekdays */
 "Smart alerts" = "التنبيهات الذكية";
+"Stop sound" = "إيقاف الصوت";
+"Sound stopped · task still active" = "تم إيقاف الصوت · المهمة ما زالت نشطة";
+"Alarm action" = "إجراء المنبّه";
+"Action" = "الإجراء";
+"Stopping the sound keeps your task active. With follow-ups enabled, the alarm returns at your repeat interval until you confirm. Haptics follow iPhone settings." = "إيقاف الصوت لا يُنهي المهمة. عند تفعيل المتابعات، يعود المنبّه حسب فترة التكرار حتى تؤكد الإنجاز. يتبع الاهتزاز إعدادات الآيفون.";
 "Dynamic Island appears 10 minutes before the event" = "يظهر النوتش قبل الموعد بعشر دقائق فقط";
 "The countdown stays at zero after the deadline until you confirm. iOS controls the maximum Live Activity duration." = "يثبت العدّاد على الصفر بعد الموعد حتى تؤكد الإنجاز. يحدد iOS الحد الأقصى لمدة النشاط المباشر.";
 "Upcoming activities can start automatically while the app is closed." = "يمكن جدولة ظهور النوتش تلقائيًا والتطبيق مغلق.";

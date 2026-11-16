@@ -46,13 +46,54 @@ enum ReminderPresentationPolicy {
         }.first
     }
 
-    /// One strong alarm per occurrence, never one per follow-up. Snoozes keep
-    /// the original identity while replacing their deadline.
+    /// Only one native alarm is armed per task. Dismissing it arms the next
+    /// follow-up without changing the task's identity or acknowledgement.
     static func alarmOccurrences(_ occurrences: [Occurrence], now: Date,
+                                 dismissedAt: (String) -> Date? = { _ in nil },
+                                 persistentFollowUps: Bool = false,
                                  limit: Int = 20) -> [Occurrence] {
-        var seen = Set<String>()
-        return Array(occurrences.sorted { $0.dueDate < $1.dueDate }.filter {
-            $0.dueDate > now && seen.insert($0.seriesID).inserted
+        let grouped = Dictionary(grouping: occurrences, by: \.seriesID)
+        let next = grouped.values.compactMap { events -> Occurrence? in
+            guard let first = events.sorted(by: { $0.fireDate < $1.fireDate }).first else { return nil }
+            if first.dueDate > now { return first }
+            guard let dismissed = dismissedAt(first.seriesID), dismissed >= first.dueDate,
+                  first.repeatIntervalMinutes > 0 else { return nil }
+            let cutoff = max(now, dismissed)
+            if persistentFollowUps {
+                let interval = Double(first.repeatIntervalMinutes) * 60
+                let index = max(1, Int(floor(cutoff.timeIntervalSince(first.dueDate) / interval)) + 1)
+                return Occurrence(kind: first.kind, title: first.title, body: first.body,
+                    followUpBody: first.followUpBody,
+                    fireDate: first.dueDate.addingTimeInterval(Double(index) * interval),
+                    dueDate: first.dueDate, seriesID: first.seriesID, nagIndex: index,
+                    eventTitle: first.eventTitle, isImportant: first.isImportant,
+                    repeatIntervalMinutes: first.repeatIntervalMinutes, activityDate: first.activityDate)
+            }
+            return events.filter { $0.fireDate > cutoff }.min { $0.fireDate < $1.fireDate }
+        }
+        return Array(next.sorted {
+            if $0.fireDate != $1.fireDate { return $0.fireDate < $1.fireDate }
+            return $0.seriesID < $1.seriesID
         }.prefix(max(0, limit)))
+    }
+
+    /// Native repeats can fall between the sparse safety-tail notifications.
+    /// Replace that series' nearest alert so the dashboard and fallback banner
+    /// agree with the native alarm, without consuming another OS queue slot.
+    static func alignNotifications(_ occurrences: [Occurrence], alarms: [String: Date]) -> [Occurrence] {
+        var result = occurrences
+        for (series, fireDate) in alarms {
+            guard !result.contains(where: { $0.seriesID == series && abs($0.fireDate.timeIntervalSince(fireDate)) < 1 }),
+                  let index = result.firstIndex(where: { $0.seriesID == series }) else { continue }
+            let original = result[index]
+            let interval = Double(max(1, original.repeatIntervalMinutes)) * 60
+            let repeatIndex = max(1, Int(round(fireDate.timeIntervalSince(original.dueDate) / interval)))
+            result[index] = Occurrence(kind: original.kind, title: original.title, body: original.body,
+                followUpBody: original.followUpBody, fireDate: fireDate, dueDate: original.dueDate,
+                seriesID: series, nagIndex: 1_000_000 + repeatIndex,
+                eventTitle: original.eventTitle, isImportant: original.isImportant,
+                repeatIntervalMinutes: original.repeatIntervalMinutes, activityDate: original.activityDate)
+        }
+        return result.sorted { $0.fireDate < $1.fireDate }
     }
 }

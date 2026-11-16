@@ -111,8 +111,33 @@ struct ResumeDutyPingRemindersIntent: AppIntent {
 
 #if canImport(AlarmKit)
 @available(iOS 26.0, *)
+struct DutyPingAlarmControlIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Alarm action"
+    static var openAppWhenRun = false
+    @Parameter(title: "Action") var actionName: String
+    @Parameter(title: "Series") var seriesID: String
+    @Parameter(title: "Kind") var kind: String
+    @Parameter(title: "Reminder") var reminderTitle: String
+
+    init() { actionName = ""; seriesID = ""; kind = ""; reminderTitle = "" }
+    init(action: AlarmControlAction, seriesID: String, kind: String, reminderTitle: String) {
+        actionName = action.rawValue; self.seriesID = seriesID
+        self.kind = kind; self.reminderTitle = reminderTitle
+    }
+
+    func perform() async throws -> some IntentResult {
+        guard let action = AlarmControlAction(rawValue: actionName), !seriesID.isEmpty else { return .result() }
+        try? AlarmManager.shared.stop(id: AlarmIdentity.id(for: seriesID))
+        await Scheduler.shared.handleNativeAlarmAction(action, seriesID: seriesID, kind: kind, title: reminderTitle)
+        return .result()
+    }
+}
+
+/// Older persisted alarms used this intent as their system stop callback.
+/// Preserve its identifier during upgrades, but never interpret it as completion.
+@available(iOS 26.0, *)
 struct ConfirmDutyPingAlarmIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Confirm done"
+    static var title: LocalizedStringResource = "Stop sound"
     static var openAppWhenRun = false
     @Parameter(title: "Series") var seriesID: String
     @Parameter(title: "Kind") var kind: String
@@ -126,8 +151,7 @@ struct ConfirmDutyPingAlarmIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         try? AlarmManager.shared.stop(id: AlarmIdentity.id(for: seriesID))
         if kind != "test", !seriesID.isEmpty {
-            await Scheduler.shared.completeAsync(seriesID: seriesID, kind: kind, title: reminderTitle,
-                                                  fromLiveActivityIntent: true)
+            await Scheduler.shared.handleNativeAlarmAction(.silence, seriesID: seriesID, kind: kind, title: reminderTitle)
         }
         return .result()
     }
