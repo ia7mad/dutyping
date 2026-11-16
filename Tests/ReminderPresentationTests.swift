@@ -98,4 +98,29 @@ final class ReminderPresentationTests: XCTestCase {
         let restored = try JSONDecoder().decode(Settings.self, from: data)
         XCTAssertFalse(restored.usesSilentModeAlarms)
     }
+
+    func testEditingShiftInvalidatesItsOldActivityDate() throws {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: now)
+        var shift = Shift(weekday: calendar.component(.weekday, from: day),
+                          start: TimeOfDay(hour: 7, minute: 25), end: TimeOfDay(hour: 16, minute: 0))
+        let series = "shift-\(shift.id.uuidString)-in-\(Int(day.timeIntervalSince1970))"
+        let original = try XCTUnwrap(ReminderPresentationPolicy.currentDate(seriesID: series,
+            kind: "checkIn", reminders: [], shifts: [shift]))
+        shift.start = TimeOfDay(hour: 9, minute: 25)
+        let updated = try XCTUnwrap(ReminderPresentationPolicy.currentDate(seriesID: series,
+            kind: "checkIn", reminders: [], shifts: [shift]))
+        XCTAssertEqual(updated.timeIntervalSince(original), 7200)
+    }
+
+    func testSnoozedShiftUsesSnoozeDeadlineForItsActivity() {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: now)
+        let shift = Shift(weekday: calendar.component(.weekday, from: day),
+                          start: TimeOfDay(hour: 7, minute: 25), end: TimeOfDay(hour: 16, minute: 0))
+        let series = "shift-\(shift.id.uuidString)-in-\(Int(day.timeIntervalSince1970))"
+        let snooze = now.addingTimeInterval(600)
+        XCTAssertEqual(ReminderPresentationPolicy.currentDate(seriesID: series, kind: "checkIn",
+            reminders: [], shifts: [shift], snoozedUntil: snooze), snooze)
+    }
 }

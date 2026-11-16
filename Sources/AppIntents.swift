@@ -126,7 +126,8 @@ struct ConfirmDutyPingAlarmIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         try? AlarmManager.shared.stop(id: AlarmIdentity.id(for: seriesID))
         if kind != "test", !seriesID.isEmpty {
-            await Scheduler.shared.completeAsync(seriesID: seriesID, kind: kind, title: reminderTitle)
+            await Scheduler.shared.completeAsync(seriesID: seriesID, kind: kind, title: reminderTitle,
+                                                  fromLiveActivityIntent: true)
         }
         return .result()
     }
@@ -148,7 +149,8 @@ struct SnoozeDutyPingAlarmIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         try? AlarmManager.shared.stop(id: AlarmIdentity.id(for: seriesID))
         if kind != "test", !seriesID.isEmpty {
-            await Scheduler.shared.snoozeAsync(seriesID: seriesID, kind: kind, title: reminderTitle)
+            await Scheduler.shared.snoozeAsync(seriesID: seriesID, kind: kind, title: reminderTitle,
+                                                fromLiveActivityIntent: true)
         }
         return .result()
     }

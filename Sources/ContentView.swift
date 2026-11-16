@@ -137,6 +137,7 @@ struct ContentView: View {
                 AssistantSettingsView()
             }
             .onReceive(NotificationCenter.default.publisher(for: .dutyPingScheduleChanged)) { _ in
+                store.load()
                 store.objectWillChange.send()
                 refresh()
             }
@@ -609,7 +610,7 @@ struct ContentView: View {
                 if store.settings.usesSilentModeAlarms {
                     Button {
                         Task {
-                            await AlarmController.shared.sendTest()
+                            await Scheduler.shared.sendStrongTest()
                             refresh()
                         }
                     } label: {

@@ -19,7 +19,7 @@ final class LiveActivityManager {
         }
     }
 
-    func syncToNextReminder(paused: Bool = false) async {
+    func syncToNextReminder(paused: Bool = false, fromLiveActivityIntent: Bool = false) async {
         guard #available(iOS 16.2, *) else { return }
         lastError = nil
         let current = Activity<ReminderActivityAttributes>.activities
@@ -48,8 +48,10 @@ final class LiveActivityManager {
         let store = Store()
         for activity in current where activity.activityState == .active || activity.activityState == .stale {
             let series = activity.attributes.seriesID
-            let stillExists = store.reminders.contains { $0.ownsSeries(series) } ||
-                store.shifts.contains { $0.isEnabled && series.hasPrefix("shift-\($0.id.uuidString)-") } ||
+            let expected = ReminderPresentationPolicy.currentDate(seriesID: series, kind: activity.attributes.kind,
+                reminders: store.reminders, shifts: store.shifts,
+                snoozedUntil: AcknowledgementStore.shared.snoozedUntil(series))
+            let stillExists = expected.map { abs($0.timeIntervalSince(activity.content.state.dueDate)) < 1 } ??
                 (series.hasPrefix("geo-") && store.settings.geofenceEnabled)
             if stillExists && !AcknowledgementStore.shared.contains(series) {
                 candidates.append(ActivityCandidate(seriesID: series, kind: activity.attributes.kind,
@@ -87,7 +89,7 @@ final class LiveActivityManager {
             if matching.content.state != state { await matching.update(content) }
             return
         }
-        guard UIApplication.shared.applicationState == .active else { return }
+        guard UIApplication.shared.applicationState == .active || fromLiveActivityIntent else { return }
         let attributes = ReminderActivityAttributes(seriesID: next.seriesID, title: next.title, kind: next.kind)
         do {
             if #available(iOS 26.0, *), next.startDate > now {

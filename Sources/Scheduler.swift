@@ -105,7 +105,8 @@ final class Scheduler: ObservableObject {
         }.value
     }
 
-    private func rebuild(shifts: [Shift], reminders: [PersonalReminder], settings: Settings) async {
+    private func rebuild(shifts: [Shift], reminders: [PersonalReminder], settings: Settings,
+                         fromLiveActivityIntent: Bool = false) async {
         lastError = nil
         let pending = await center.pendingNotificationRequests()
         let preserved = pending.filter {
@@ -142,17 +143,27 @@ final class Scheduler: ObservableObject {
             guard let series = notification.request.content.userInfo["series"] as? String else { return false }
             if settings.isPaused || AcknowledgementStore.shared.contains(series) { return true }
             if series.hasPrefix("geo-") && !settings.geofenceEnabled { return true }
+            let info = notification.request.content.userInfo
+            if series.hasPrefix("shift-"),
+               let expected = ReminderPresentationPolicy.currentDate(seriesID: series,
+                    kind: info["kind"] as? String ?? "", reminders: reminders, shifts: shifts,
+                    snoozedUntil: AcknowledgementStore.shared.snoozedUntil(series)),
+               let stamp = info["activityDate"] as? TimeInterval {
+                return abs(expected.timeIntervalSince1970 - stamp) >= 1
+            }
             return series.hasPrefix("reminder-") &&
                 !reminders.contains { $0.ownsSeries(series) }
         }
         center.removeDeliveredNotifications(withIdentifiers: obsolete.map { $0.request.identifier })
-        await LiveActivityManager.shared.syncToNextReminder(paused: settings.isPaused)
+        await LiveActivityManager.shared.syncToNextReminder(paused: settings.isPaused,
+                                                            fromLiveActivityIntent: fromLiveActivityIntent)
         NotificationCenter.default.post(name: .dutyPingScheduleChanged, object: nil)
     }
 
-    private func rebuildSavedSchedule() async {
+    private func rebuildSavedSchedule(fromLiveActivityIntent: Bool = false) async {
         let store = Store()
-        await rebuild(shifts: store.shifts, reminders: store.reminders, settings: store.settings)
+        await rebuild(shifts: store.shifts, reminders: store.reminders, settings: store.settings,
+                      fromLiveActivityIntent: fromLiveActivityIntent)
     }
 
     func makeRequest(for occurrence: Occurrence, hasStrongAlarm: Bool = false) -> UNNotificationRequest {
@@ -252,6 +263,13 @@ final class Scheduler: ObservableObject {
         }
     }
 
+    func sendStrongTest() async {
+        await enqueue {
+            await AlarmController.shared.sendTest()
+            NotificationCenter.default.post(name: .dutyPingScheduleChanged, object: nil)
+        }.value
+    }
+
     func fireNow(kind: ReminderKind, reason: String, settings: Settings) {
         enqueue {
             guard !settings.isPaused, settings.geofenceEnabled else { return }
@@ -308,19 +326,24 @@ final class Scheduler: ObservableObject {
         enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }
     }
 
-    func completeAsync(seriesID: String, kind: String, title: String?) async {
-        await enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }.value
+    func completeAsync(seriesID: String, kind: String, title: String?, fromLiveActivityIntent: Bool = false) async {
+        await enqueue {
+            await self.completeNow(seriesID: seriesID, kind: kind, title: title,
+                                   fromLiveActivityIntent: fromLiveActivityIntent)
+        }.value
     }
 
-    func snoozeAsync(seriesID: String, kind: String, title: String) async {
+    func snoozeAsync(seriesID: String, kind: String, title: String, fromLiveActivityIntent: Bool = false) async {
         await enqueue {
             await self.snoozeNow(seriesID: seriesID, kind: kind, title: title,
-                                 eventTitle: kind == "personal" ? title : nil)
+                                 eventTitle: kind == "personal" ? title : nil,
+                                 fromLiveActivityIntent: fromLiveActivityIntent)
         }.value
     }
 
     private func snoozeNow(seriesID: String, kind: String, title: String, eventTitle: String?,
-                           originalContent: UNNotificationContent? = nil) async {
+                           originalContent: UNNotificationContent? = nil,
+                           fromLiveActivityIntent: Bool = false) async {
         guard !AcknowledgementStore.shared.contains(seriesID) else { return }
         let until = Date().addingTimeInterval(600)
         AcknowledgementStore.shared.snooze(seriesID, until: until)
@@ -350,17 +373,18 @@ final class Scheduler: ObservableObject {
             }
         }
         EventLog.shared.record(kind: kind, action: .snoozed, title: eventTitle)
-        await rebuildSavedSchedule()
+        await rebuildSavedSchedule(fromLiveActivityIntent: fromLiveActivityIntent)
     }
 
-    private func completeNow(seriesID: String, kind: String, title: String?) async {
+    private func completeNow(seriesID: String, kind: String, title: String?,
+                              fromLiveActivityIntent: Bool = false) async {
         guard !AcknowledgementStore.shared.contains(seriesID) else { return }
         AcknowledgementStore.shared.markCompleted(seriesID)
         await cancelSeries(seriesID)
         center.setBadgeCount(0) { _ in }
         await LiveActivityManager.shared.end(seriesID: seriesID)
         EventLog.shared.record(kind: kind, action: .done, title: title)
-        await rebuildSavedSchedule()
+        await rebuildSavedSchedule(fromLiveActivityIntent: fromLiveActivityIntent)
     }
 
     private func cancelSeries(_ series: String) async {

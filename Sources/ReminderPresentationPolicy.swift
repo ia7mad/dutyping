@@ -11,6 +11,23 @@ struct ActivityCandidate: Equatable {
 }
 
 enum ReminderPresentationPolicy {
+    static func currentDate(seriesID: String, kind: String, reminders: [PersonalReminder],
+                            shifts: [Shift], snoozedUntil: Date? = nil) -> Date? {
+        if reminders.contains(where: { $0.ownsSeries(seriesID) }),
+           let stamp = seriesID.split(separator: "-").last.flatMap({ TimeInterval($0) }) {
+            return snoozedUntil ?? Date(timeIntervalSince1970: stamp)
+        }
+        if let shift = shifts.first(where: { $0.isEnabled && seriesID.hasPrefix("shift-\($0.id.uuidString)-") }),
+           let stamp = seriesID.split(separator: "-").last.flatMap({ TimeInterval($0) }) {
+            if let snoozedUntil { return snoozedUntil }
+            let day = Date(timeIntervalSince1970: stamp)
+            if kind == ReminderKind.checkIn.rawValue { return shift.start.date(on: day) }
+            let endDay = shift.crossesMidnight ? Calendar.current.date(byAdding: .day, value: 1, to: day) ?? day : day
+            return shift.end.date(on: endDay)
+        }
+        return nil
+    }
+
     /// Keep the current overdue task until confirmation. Future tasks should
     /// only occupy the Island during their final ten minutes.
     static func next(_ candidates: [ActivityCandidate], now: Date,
