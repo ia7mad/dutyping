@@ -168,6 +168,33 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     var completedChecklistItems: [String]?
     var source: ReminderSource?
 
+    func seriesID(for date: Date) -> String {
+        "reminder-\(id.uuidString)-\(Int(date.timeIntervalSince1970))"
+    }
+
+    var isCompleted: Bool {
+        repeatRule == .never && AcknowledgementStore.shared.contains(seriesID(for: dueDate))
+    }
+
+    func ownsSeries(_ series: String, calendar: Calendar = .current) -> Bool {
+        let prefix = "reminder-\(id.uuidString)-"
+        guard isEnabled, hasSchedule, series.hasPrefix(prefix),
+              let stamp = TimeInterval(series.dropFirst(prefix.count)) else { return false }
+        if repeatRule == .never { return series == seriesID(for: dueDate) }
+        let date = Date(timeIntervalSince1970: stamp)
+        let anchor = Date(timeIntervalSince1970: floor(dueDate.timeIntervalSince1970 / 60) * 60)
+        guard date >= anchor,
+              calendar.component(.hour, from: date) == calendar.component(.hour, from: dueDate),
+              calendar.component(.minute, from: date) == calendar.component(.minute, from: dueDate) else { return false }
+        switch repeatRule {
+        case .never: return false
+        case .daily: return true
+        case .weekdays: return !calendar.isDateInWeekend(date)
+        case .weekly: return calendar.component(.weekday, from: date) == calendar.component(.weekday, from: dueDate)
+        case .monthly: return calendar.component(.day, from: date) == calendar.component(.day, from: dueDate)
+        }
+    }
+
     var hasSchedule: Bool {
         get { scheduleEnabled ?? true }
         set { scheduleEnabled = newValue }
@@ -204,6 +231,7 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
     }
 
     var summary: String {
+        if isCompleted { return String(localized: "Completed") }
         if !hasSchedule { return String(localized: "Inbox · choose a time later") }
         if repeatRule == .never {
             return dueDate.formatted(date: .abbreviated, time: .shortened)
@@ -237,6 +265,13 @@ struct Settings: Codable {
     /// Optional for backwards compatibility. Missing values adopt the safer
     /// confirmation-first behavior introduced in version 2.2.
     var persistentFollowUpsEnabled: Bool? = true
+    /// Optional to preserve existing settings files during upgrades.
+    var silentModeAlarmsEnabled: Bool?
+
+    var usesSilentModeAlarms: Bool {
+        get { silentModeAlarmsEnabled ?? false }
+        set { silentModeAlarmsEnabled = newValue }
+    }
 
     var persistentFollowUps: Bool {
         get { persistentFollowUpsEnabled ?? true }
@@ -265,12 +300,14 @@ struct DutyEvent: Codable, Identifiable, Hashable {
         case done
         case snoozed
         case opened
+        case silenced
 
         var label: String {
             switch self {
             case .done: return String(localized: "Confirmed")
             case .snoozed: return String(localized: "Snoozed")
             case .opened: return String(localized: "Opened")
+            case .silenced: return String(localized: "Sound stopped · task still active")
             }
         }
 
@@ -279,6 +316,7 @@ struct DutyEvent: Codable, Identifiable, Hashable {
             case .done: return "checkmark.circle.fill"
             case .snoozed: return "moon.zzz.fill"
             case .opened: return "hand.tap.fill"
+            case .silenced: return "bell.slash.fill"
             }
         }
     }

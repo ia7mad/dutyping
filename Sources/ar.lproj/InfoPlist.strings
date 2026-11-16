@@ -1,4 +1,5 @@
 "CFBundleDisplayName" = "ديوتي بينغ";
+"NSAlarmKitUsageDescription" = "يستخدم ديوتي بينغ المنبّهات التي تفعّلها لتذكيرك بمواعيدك بصوت حتى في وضع الصامت.";
 "NSMicrophoneUsageDescription" = "يستخدم ديوتي بينغ الميكروفون لتسجيل الأفكار التي تختار حفظها، وتبقى التسجيلات على جهازك.";
 "NSSpeechRecognitionUsageDescription" = "يحوّل ديوتي بينغ كلامك إلى نص حتى تسجل تذكيراتك بسرعة.";
 "NSLocationWhenInUseUsageDescription" = "يستخدم ديوتي بينغ موقعك لتذكيرك بالحضور والانصراف عند الوصول أو المغادرة.";

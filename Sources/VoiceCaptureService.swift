@@ -16,12 +16,16 @@ final class VoiceCaptureService: NSObject, ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioFile: AVAudioFile?
     private var tapInstalled = false
+    private var isStarting = false
 
     func toggle(localeIdentifier: String? = nil) async {
         if isRecording { stop() } else { await start(localeIdentifier: localeIdentifier) }
     }
 
     func start(localeIdentifier: String? = nil) async {
+        guard !isRecording, !isStarting else { return }
+        isStarting = true
+        defer { isStarting = false }
         errorMessage = nil
         transcript = ""
         audioFileName = nil
@@ -32,6 +36,7 @@ final class VoiceCaptureService: NSObject, ObservableObject {
             return
         }
         let speechStatus = await requestSpeechPermission()
+        guard !Task.isCancelled else { return }
         speechAvailable = speechStatus == .authorized
 
         do {

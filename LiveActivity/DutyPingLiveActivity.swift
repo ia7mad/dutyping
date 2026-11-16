@@ -30,7 +30,7 @@ struct DutyPingLiveActivity: Widget {
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.dueDate, style: .timer)
+                    countdown(context)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -48,6 +48,12 @@ struct DutyPingLiveActivity: Widget {
                             }
                         }
                         Spacer()
+                        Link(destination: context.attributes.snoozeURL) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.body.weight(.semibold))
+                                .padding(8)
+                        }
+                        .accessibilityLabel("Snooze 10 min")
                         Link(destination: context.attributes.completionURL) {
                             Label("Confirm", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.bold))
@@ -64,16 +70,17 @@ struct DutyPingLiveActivity: Widget {
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } compactTrailing: {
-                Text(context.state.dueDate, style: .timer)
+                countdown(context)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.orange)
+                    .frame(width: 58, alignment: .trailing)
             } minimal: {
                 Image("Logo")
                     .resizable()
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
-            .widgetURL(context.attributes.completionURL)
+            .widgetURL(context.attributes.openURL)
             .keylineTint(.mint)
         }
     }
@@ -109,16 +116,31 @@ struct DutyPingLiveActivity: Widget {
             }
             Spacer()
             VStack(spacing: 5) {
-                Text(context.state.dueDate, style: .timer)
+                countdown(context)
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(.white)
-                Link(destination: context.attributes.completionURL) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.mint)
+                HStack(spacing: 10) {
+                    Link(destination: context.attributes.snoozeURL) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityLabel("Snooze 10 min")
+                    Link(destination: context.attributes.completionURL) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.mint)
+                    }
                 }
             }
         }
         .padding(16)
+    }
+
+    private func countdown(_ context: ActivityViewContext<ReminderActivityAttributes>) -> some View {
+        Text(timerInterval: min(context.state.startedAt ?? context.state.dueDate, context.state.dueDate)...context.state.dueDate,
+             countsDown: true)
+            .monospacedDigit()
+            .multilineTextAlignment(.trailing)
     }
 }

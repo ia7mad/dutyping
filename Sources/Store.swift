@@ -92,6 +92,19 @@ final class Store: ObservableObject {
         commit()
     }
 
+    func setReminderEnabled(id: UUID, enabled: Bool) {
+        guard let index = reminders.firstIndex(where: { $0.id == id }) else { return }
+        if enabled {
+            let series = reminders[index].seriesID(for: reminders[index].dueDate)
+            AcknowledgementStore.shared.reopen(series)
+            if reminders[index].dueDate < Date(), settings.nagEnabled {
+                AcknowledgementStore.shared.markAlarmDismissed(series)
+            }
+        }
+        reminders[index].isEnabled = enabled
+        commit()
+    }
+
     func deleteReminder(id: UUID) {
         if let fileName = reminders.first(where: { $0.id == id })?.audioFileName,
            let url = VoiceCaptureService.audioURL(fileName: fileName) {

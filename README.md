@@ -2,8 +2,8 @@
 
 A private, on-device reminder assistant for iPhone. DutyPing began as a way to
 remember work check-in and check-out, and now also handles everyday personal
-reminders. There is no network, server, analytics, or account; everything stays
-on the phone.
+reminders. Reminders and recordings stay on the phone. No server or account is
+required; optional DeepSeek organization sends captured text to its API.
 
 ## What it does
 
@@ -100,6 +100,7 @@ automatically — the Status section shows the date reminders are covered throug
 | `Sources/Models.swift` | Shift, reminder, schedule, and settings models |
 | `Sources/Store.swift` | JSON persistence; every write reschedules |
 | `Sources/Scheduler.swift` | Builds the unified reminder queue |
+| `Sources/ReminderPlanner.swift` | Testable calendar, follow-up, and snooze rules |
 | `Sources/LiveActivityManager.swift` | Starts and closes the next local Live Activity |
 | `LiveActivity/` | Lock Screen and Dynamic Island presentation |
 | `Sources/GeofenceManager.swift` | Workplace region monitoring |
@@ -119,3 +120,100 @@ the assistant on. The key is stored in the iOS Keychain and is never committed
 to this repository. Only the captured text is sent to DeepSeek; recordings,
 location, history, and notification scheduling remain local. If the service is
 offline or rejects a request, DutyPing automatically uses its local parser.
+
+## Version 2.4 reliability fixes
+
+- Opening the app after a deadline retains that occurrence's remaining follow-ups.
+- Overnight shift checkout is retained when the app opens after midnight.
+- Snooze keeps the original occurrence identity and survives app relaunches.
+- Completed one-time tasks show **Completed** in the list. Turn the task back on
+  to reopen it; recurring confirmations close only that occurrence.
+- Tapping the Live Activity opens the app. Only **Confirm** completes a task.
+- Deleted or disabled tasks remove their pending alerts, delivered banners, and
+  Live Activity. Moving a task to a new time invalidates its old occurrence.
+- Countdown text stops at zero and the dashboard advances to the next alert.
+- Queue mutations run serially, and relative reminders retain their seconds.
+
+Live Activities last up to the system's activity limit. On iOS 26 and later,
+DutyPing schedules the next activity to start ten minutes before the event,
+including while the app is closed. Older iOS versions require the app to be
+opened within that ten-minute window. Local notifications continue independently
+while it is closed. Persistent follow-ups use a finite notification queue;
+reopening the app replenishes it.
+
+Regression tests cover overdue tasks, recurrence, overnight shifts, queue
+capacity, snooze persistence, completion, date edits, second precision, upgrades,
+and Arabic capture. GitHub Actions builds the IPA and runs these tests on an
+available iPhone simulator before publishing the installation artifact.
+
+Before installing over your daily-use copy, check these flows on an iPhone:
+
+1. Schedule a reminder a minute ahead; leave and reopen the app after it fires.
+2. Snooze it, reopen the app, and confirm that its original follow-ups stay muted.
+3. Tap the Dynamic Island body, then its explicit confirmation button separately.
+4. Edit, disable, and delete an active task; verify the old activity disappears.
+5. Complete a one-time task, relaunch, and verify its completed state remains.
+6. Pause reminders and cross the workplace boundary; verify no location alert fires.
+
+## Version 2.5: smart timing, alarms, and Shortcuts
+
+The Dynamic Island appears during the final ten minutes. It counts down to the
+actual shift start/end, even when a check-in delay or check-out lead is configured.
+Snooze changes the displayed deadline. An active overdue task stays selected
+until confirmation, within iOS's maximum Live Activity duration.
+
+On **iOS 26 or later**, enable **Smart alerts → Sound in Silent Mode** and grant
+the system Alarms permission. AlarmKit delivers a strong alarm at the configured
+reminder deadline through Silent Mode and Focus. Stopping its sound leaves the
+task active; when follow-ups are enabled it arms the next alarm at the selected
+repeat interval. Only explicit confirmation completes the task. Alarm sound and
+vibration follow system settings; DutyPing does
+not override a person's disabled haptics. The feature is off until enabled, and
+ordinary notifications remain available if permission is denied or iOS is older.
+Use **Test strong alarm in 10 seconds** to verify it on your iPhone. No Critical
+Alerts entitlement or server is required.
+
+DutyPing manages up to twenty upcoming native alarms; opening the app replenishes
+them. Completion, deletion, disabling, snoozing, and pause reconcile both the
+notification queue and the native alarms. It preserves existing matching alarms
+instead of repeatedly cancelling and rescheduling them.
+
+In the **Shortcuts** app, search for DutyPing to find:
+
+- **Record a task by voice:** opens the capture sheet and starts the microphone.
+  Stop recording to organize the thought and review it before saving.
+- **Smart task:** accepts dictated or typed text, organizes it with the selected
+  assistant, and saves it. With no expressed time, it goes to the inbox.
+- **Next reminder:** returns the upcoming reminder as text for use in shortcuts.
+- **Pause reminders:** pauses for a chosen number of minutes.
+- **Resume reminders:** restores reminders.
+- Existing **Add reminder** and **Capture thought** actions remain available.
+
+Device checks for this version: schedule a shift seventy minutes ahead, close
+the app, and verify there is no Island until ten minutes before its actual start.
+Turn on Silent Mode, enable strong alarms, and test the alarm on a locked phone.
+Try confirmation and snooze from the native alarm, and run voice capture both
+with DutyPing closed and already open.
+
+## Version 2.6: stopping sound is not completion
+
+- The native alarm's **× / Stop sound** action stops only the current sound.
+  It keeps the task, Dynamic Island, and pending follow-ups active.
+- **Confirm done** is a separate native alarm action. It closes the occurrence
+  and cancels both its remaining notifications and its next native alarm.
+- With persistent follow-ups and a two-minute interval, closing the alarm re-arms
+  it on the next two-minute boundary. Successive dismissals do not lengthen the
+  selected interval, even after the normal notification safety tail becomes sparse.
+- With finite follow-ups, the selected count remains the limit. Disabling nagging
+  prevents another native alarm after closing the sound.
+- Snooze is available from the reminder notification and the Live Activity's clock
+  button. It postpones the same task for ten minutes and resets the repeat state.
+- Existing native alarm configurations are refreshed during upgrade, and legacy
+  stop callbacks also stop sound without confirming a task.
+
+Tasks already marked completed by an older version stay completed; DutyPing cannot
+distinguish an accidental old stop from an intentional completion. Turn an affected
+task back on once to resume its reminders. This avoids reopening genuinely finished
+tasks. Test on a locked iPhone: choose a two-minute repeat, close the first alarm
+using ×, verify the task stays active and rings again, then use **Confirm done**
+and verify all repeats stop. Also test snooze and turning follow-ups off.

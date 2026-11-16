@@ -19,11 +19,15 @@ struct DutyPingApp: App {
         .onChange(of: scenePhase) { phase in
             // Topping up on every foreground is what keeps the rolling horizon
             // from running out.
-            if phase == .active { store.commit() }
+            if phase == .active {
+                store.load()
+                store.commit()
+            }
         }
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     private static let refreshTaskID = "com.dutyping.app.refresh"
 
@@ -62,7 +66,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             await Scheduler.shared.rescheduleAsync(shifts: shifts,
                                                    reminders: reminders,
                                                    settings: settings)
-            task.setTaskCompleted(success: true)
+            task.setTaskCompleted(success: !Task.isCancelled)
         }
         task.expirationHandler = { work.cancel() }
     }
@@ -77,6 +81,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse) async {
-        Scheduler.shared.handle(response: response)
+        await Scheduler.shared.handle(response: response)
     }
 }
