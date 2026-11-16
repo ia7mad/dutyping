@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>DutyPing uses alarms you enable to remind you at your chosen times, even in Silent Mode.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

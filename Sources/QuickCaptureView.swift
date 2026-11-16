@@ -6,6 +6,7 @@ struct QuickCaptureView: View {
     @StateObject private var voice = VoiceCaptureService()
 
     let shifts: [Shift]
+    var startRecordingOnAppear = false
     let onSave: (PersonalReminder) -> Void
 
     @State private var text = ""
@@ -13,6 +14,7 @@ struct QuickCaptureView: View {
     @State private var editingPreview: PersonalReminder?
     @State private var isOrganizing = false
     @State private var saved = false
+    @State private var automaticallyStarted = false
     @AppStorage("capture.speechLanguage") private var speechLanguage = "auto"
 
     var body: some View {
@@ -29,6 +31,11 @@ struct QuickCaptureView: View {
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Quick capture")
             .navigationBarTitleDisplayMode(.inline)
+            .task(id: startRecordingOnAppear) {
+                guard startRecordingOnAppear, !automaticallyStarted else { return }
+                automaticallyStarted = true
+                await voice.start(localeIdentifier: selectedSpeechLocale)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { cancel() }
@@ -69,7 +76,14 @@ struct QuickCaptureView: View {
                 .contentShape(Circle())
                 .onTapGesture {
                     Haptics.tap()
-                    Task { await voice.toggle(localeIdentifier: selectedSpeechLocale) }
+                    Task {
+                        let wasRecording = voice.isRecording
+                        await voice.toggle(localeIdentifier: selectedSpeechLocale)
+                        if wasRecording && startRecordingOnAppear {
+                            try? await Task.sleep(nanoseconds: 350_000_000)
+                            if !Task.isCancelled { organize() }
+                        }
+                    }
                 }
 
                 VStack(spacing: 4) {

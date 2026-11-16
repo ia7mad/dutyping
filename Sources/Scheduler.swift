@@ -119,11 +119,15 @@ final class Scheduler: ObservableObject {
         let occurrences = ReminderPlanner().plan(shifts: shifts, reminders: reminders,
                                                 settings: settings,
                                                 limit: max(0, 58 - preserved.count))
+        let alarms = await AlarmController.shared.reconcile(occurrences: occurrences,
+                                                            enabled: settings.usesSilentModeAlarms,
+                                                            isPaused: settings.isPaused)
         var added: [Occurrence] = []
         for occurrence in occurrences {
             guard !AcknowledgementStore.shared.contains(occurrence.seriesID) else { continue }
             do {
-                try await center.add(makeRequest(for: occurrence))
+                try await center.add(makeRequest(for: occurrence,
+                    hasStrongAlarm: occurrence.nagIndex == 0 && alarms.contains(occurrence.seriesID)))
                 added.append(occurrence)
             } catch {
                 lastError = error.localizedDescription
@@ -151,17 +155,18 @@ final class Scheduler: ObservableObject {
         await rebuild(shifts: store.shifts, reminders: store.reminders, settings: store.settings)
     }
 
-    func makeRequest(for occurrence: Occurrence) -> UNNotificationRequest {
+    func makeRequest(for occurrence: Occurrence, hasStrongAlarm: Bool = false) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = occurrence.title
         content.body = occurrence.nagIndex == 0 ? occurrence.body : occurrence.followUpBody
-        content.sound = .default
+        content.sound = hasStrongAlarm ? nil : .default
         content.badge = 1
         content.categoryIdentifier = Self.categoryID
         if occurrence.isImportant { content.interruptionLevel = .timeSensitive }
         var info: [AnyHashable: Any] = [
             "series": occurrence.seriesID, "kind": occurrence.kind.rawValue,
             "dueDate": occurrence.dueDate.timeIntervalSince1970,
+            "activityDate": (occurrence.activityDate ?? occurrence.dueDate).timeIntervalSince1970,
             "repeatIntervalMinutes": occurrence.repeatIntervalMinutes
         ]
         if let title = occurrence.eventTitle { info["eventTitle"] = title }
@@ -228,7 +233,7 @@ final class Scheduler: ObservableObject {
         }.sorted { $0.date < $1.date }
         return Diagnostics(authorizationStatus: settings.authorizationStatus,
                            pendingCount: pending.count, upcoming: Array(upcoming.prefix(8)),
-                           error: lastError ?? LiveActivityManager.shared.lastError)
+                           error: lastError ?? AlarmController.shared.lastError ?? LiveActivityManager.shared.lastError)
     }
 
     func sendTest(after seconds: TimeInterval = 10) {
@@ -279,30 +284,8 @@ final class Scheduler: ObservableObject {
             let title = info["eventTitle"] as? String
             switch response.actionIdentifier {
             case Self.snoozeActionID:
-                guard !AcknowledgementStore.shared.contains(series) else { return }
-                let until = Date().addingTimeInterval(600)
-                AcknowledgementStore.shared.snooze(series, until: until)
-                await self.cancelSeries(series)
-                if series.hasPrefix("geo-") {
-                    let settings = Store().settings
-                    if !settings.isPaused {
-                        let pending = await self.center.pendingNotificationRequests()
-                        let live = pending.filter { $0.identifier.hasPrefix("geo-") || $0.identifier.hasPrefix("test-") }
-                        self.center.removePendingNotificationRequests(withIdentifiers:
-                            pending.filter { !$0.identifier.hasPrefix("geo-") && !$0.identifier.hasPrefix("test-") }.map(\.identifier))
-                        let delays = ReminderPlanner.followUpDelays(settings: settings).prefix(max(0, 58 - live.count))
-                        for (index, delay) in delays.enumerated() {
-                            let content = request.content.mutableCopy() as! UNMutableNotificationContent
-                            content.userInfo["dueDate"] = until.timeIntervalSince1970
-                            do {
-                                try await self.center.add(UNNotificationRequest(identifier: "\(series)#\(index)", content: content,
-                                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 600 + Double(delay) * 60, repeats: false)))
-                            } catch { self.lastError = error.localizedDescription }
-                        }
-                    }
-                }
-                EventLog.shared.record(kind: kind, action: .snoozed, title: title)
-                await self.rebuildSavedSchedule()
+                await self.snoozeNow(seriesID: series, kind: kind, title: request.content.title,
+                                     eventTitle: title, originalContent: request.content)
             case Self.doneActionID:
                 await self.completeNow(seriesID: series, kind: kind, title: title)
             default:
@@ -323,6 +306,51 @@ final class Scheduler: ObservableObject {
 
     func complete(seriesID: String, kind: String, title: String?) {
         enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }
+    }
+
+    func completeAsync(seriesID: String, kind: String, title: String?) async {
+        await enqueue { await self.completeNow(seriesID: seriesID, kind: kind, title: title) }.value
+    }
+
+    func snoozeAsync(seriesID: String, kind: String, title: String) async {
+        await enqueue {
+            await self.snoozeNow(seriesID: seriesID, kind: kind, title: title,
+                                 eventTitle: kind == "personal" ? title : nil)
+        }.value
+    }
+
+    private func snoozeNow(seriesID: String, kind: String, title: String, eventTitle: String?,
+                           originalContent: UNNotificationContent? = nil) async {
+        guard !AcknowledgementStore.shared.contains(seriesID) else { return }
+        let until = Date().addingTimeInterval(600)
+        AcknowledgementStore.shared.snooze(seriesID, until: until)
+        await cancelSeries(seriesID)
+        if seriesID.hasPrefix("geo-") {
+            let settings = Store().settings
+            if settings.geofenceEnabled && !settings.isPaused {
+                let pending = await center.pendingNotificationRequests()
+                let live = pending.filter { $0.identifier.hasPrefix("geo-") || $0.identifier.hasPrefix("test-") }
+                center.removePendingNotificationRequests(withIdentifiers:
+                    pending.filter { !$0.identifier.hasPrefix("geo-") && !$0.identifier.hasPrefix("test-") }.map(\.identifier))
+                let delays = ReminderPlanner.followUpDelays(settings: settings).prefix(max(0, 58 - live.count))
+                for (index, delay) in delays.enumerated() {
+                    let content = originalContent?.mutableCopy() as? UNMutableNotificationContent ?? UNMutableNotificationContent()
+                    content.title = title
+                    content.sound = .default
+                    content.categoryIdentifier = Self.categoryID
+                    content.userInfo["series"] = seriesID
+                    content.userInfo["kind"] = kind
+                    content.userInfo["dueDate"] = until.timeIntervalSince1970
+                    content.userInfo["activityDate"] = until.timeIntervalSince1970
+                    do {
+                        try await center.add(UNNotificationRequest(identifier: "\(seriesID)#\(index)", content: content,
+                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 600 + Double(delay) * 60, repeats: false)))
+                    } catch { lastError = error.localizedDescription }
+                }
+            }
+        }
+        EventLog.shared.record(kind: kind, action: .snoozed, title: eventTitle)
+        await rebuildSavedSchedule()
     }
 
     private func completeNow(seriesID: String, kind: String, title: String?) async {

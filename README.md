@@ -134,11 +134,12 @@ offline or rejects a request, DutyPing automatically uses its local parser.
 - Countdown text stops at zero and the dashboard advances to the next alert.
 - Queue mutations run serially, and relative reminders retain their seconds.
 
-Live Activities start locally while the app is in the foreground and last up to
-the system's activity limit. Opening the app refreshes the next eligible activity;
-local notifications continue independently while it is closed. Automatic remote
-starts require an APNs service, which this app does not include. Persistent
-follow-ups use a finite notification queue; reopening the app replenishes it.
+Live Activities last up to the system's activity limit. On iOS 26 and later,
+DutyPing schedules the next activity to start ten minutes before the event,
+including while the app is closed. Older iOS versions require the app to be
+opened within that ten-minute window. Local notifications continue independently
+while it is closed. Persistent follow-ups use a finite notification queue;
+reopening the app replenishes it.
 
 Regression tests cover overdue tasks, recurrence, overnight shifts, queue
 capacity, snooze persistence, completion, date edits, second precision, upgrades,
@@ -153,3 +154,41 @@ Before installing over your daily-use copy, check these flows on an iPhone:
 4. Edit, disable, and delete an active task; verify the old activity disappears.
 5. Complete a one-time task, relaunch, and verify its completed state remains.
 6. Pause reminders and cross the workplace boundary; verify no location alert fires.
+
+## Version 2.5: smart timing, alarms, and Shortcuts
+
+The Dynamic Island appears during the final ten minutes. It counts down to the
+actual shift start/end, even when a check-in delay or check-out lead is configured.
+Snooze changes the displayed deadline. An active overdue task stays selected
+until confirmation, within iOS's maximum Live Activity duration.
+
+On **iOS 26 or later**, enable **Smart alerts → Sound in Silent Mode** and grant
+the system Alarms permission. AlarmKit delivers one strong alarm at the configured
+reminder deadline through Silent Mode and Focus. Follow-ups remain ordinary
+notifications. Alarm sound and vibration follow system settings; DutyPing does
+not override a person's disabled haptics. The feature is off until enabled, and
+ordinary notifications remain available if permission is denied or iOS is older.
+Use **Test strong alarm in 10 seconds** to verify it on your iPhone. No Critical
+Alerts entitlement or server is required.
+
+DutyPing manages up to twenty upcoming native alarms; opening the app replenishes
+them. Completion, deletion, disabling, snoozing, and pause reconcile both the
+notification queue and the native alarms. It preserves existing matching alarms
+instead of repeatedly cancelling and rescheduling them.
+
+In the **Shortcuts** app, search for DutyPing to find:
+
+- **Record a task by voice:** opens the capture sheet and starts the microphone.
+  Stop recording to organize the thought and review it before saving.
+- **Smart task:** accepts dictated or typed text, organizes it with the selected
+  assistant, and saves it. With no expressed time, it goes to the inbox.
+- **Next reminder:** returns the upcoming reminder as text for use in shortcuts.
+- **Pause reminders:** pauses for a chosen number of minutes.
+- **Resume reminders:** restores reminders.
+- Existing **Add reminder** and **Capture thought** actions remain available.
+
+Device checks for this version: schedule a shift seventy minutes ahead, close
+the app, and verify there is no Island until ten minutes before its actual start.
+Turn on Silent Mode, enable strong alarms, and test the alarm on a locked phone.
+Try confirmation and snooze from the native alarm, and run voice capture both
+with DutyPing closed and already open.

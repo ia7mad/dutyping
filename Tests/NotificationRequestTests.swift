@@ -22,5 +22,9 @@ final class NotificationRequestTests: XCTestCase {
         XCTAssertEqual(request.content.userInfo["dueDate"] as? TimeInterval, due.timeIntervalSince1970)
         XCTAssertEqual(request.content.body, "Still waiting")
         XCTAssertEqual(request.content.interruptionLevel, .timeSensitive)
+        XCTAssertEqual(request.content.userInfo["activityDate"] as? TimeInterval, due.timeIntervalSince1970)
+        XCTAssertNotNil(request.content.sound)
+        let withAlarm = Scheduler.shared.makeRequest(for: occurrence, hasStrongAlarm: true)
+        XCTAssertNil(withAlarm.content.sound, "The local banner must not double the native alarm sound")
     }
 }

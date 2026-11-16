@@ -12,6 +12,7 @@ struct Occurrence {
     let eventTitle: String?
     let isImportant: Bool
     let repeatIntervalMinutes: Int
+    var activityDate: Date? = nil
 }
 
 /// Pure scheduling rules, shared by the notification queue and regression tests.
@@ -88,7 +89,8 @@ struct ReminderPlanner {
                     result += series(kind: kind, title: kind.firstTitle, body: kind.firstBody,
                                      followUpBody: kind.nagBody, base: base,
                                      seriesID: "shift-\(shift.id.uuidString)-\(suffix)-\(stamp)",
-                                     eventTitle: nil, isImportant: true, settings: settings, now: now)
+                                     eventTitle: nil, isImportant: true, settings: settings, now: now,
+                                     activityDate: kind == .checkIn ? shift.start.date(on: day) : shift.end.date(on: endDay))
                 }
             }
         }
@@ -119,7 +121,8 @@ struct ReminderPlanner {
 
     private func series(kind: ReminderKind, title: String, body: String, followUpBody: String,
                         base: Date, seriesID: String, eventTitle: String?, isImportant: Bool,
-                        settings: Settings, now: Date, recoverOverdue: Bool = false) -> [Occurrence] {
+                        settings: Settings, now: Date, recoverOverdue: Bool = false,
+                        activityDate: Date? = nil) -> [Occurrence] {
         guard !isCompleted(seriesID) else { return [] }
         let snooze = snoozedUntil(seriesID)
         let effectiveBase = snooze ?? base
@@ -130,7 +133,8 @@ struct ReminderPlanner {
             return Occurrence(kind: kind, title: title, body: body, followUpBody: followUpBody,
                               fireDate: fire, dueDate: effectiveBase, seriesID: seriesID,
                               nagIndex: index, eventTitle: eventTitle, isImportant: isImportant,
-                              repeatIntervalMinutes: settings.nagEnabled ? min(30, max(1, settings.nagIntervalMinutes)) : 0)
+                              repeatIntervalMinutes: settings.nagEnabled ? min(30, max(1, settings.nagIntervalMinutes)) : 0,
+                              activityDate: snooze == nil ? activityDate : snooze)
         }
         // Recover an unconfirmed one-time reminder after the finite iOS queue
         // runs out. Repeating shifts retain a bounded lookback instead.

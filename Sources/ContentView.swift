@@ -70,6 +70,7 @@ struct ContentView: View {
     @State private var editingShift: Shift?
     @State private var editingReminder: PersonalReminder?
     @State private var showingQuickCapture = false
+    @State private var startVoiceCaptureAutomatically = false
     @State private var showingAssistantSettings = false
     @State private var diagnostics = Scheduler.Diagnostics()
     @State private var events: [DutyEvent] = []
@@ -88,6 +89,7 @@ struct ContentView: View {
                     pauseCard
                     timingCard
                     nagCard
+                    smartAlertsCard
                     locationCard
                     if !events.isEmpty { historyCard }
                     diagnosticsCard
@@ -125,7 +127,8 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingQuickCapture) {
-                QuickCaptureView(shifts: store.shifts) { reminder in
+                QuickCaptureView(shifts: store.shifts,
+                                 startRecordingOnAppear: startVoiceCaptureAutomatically) { reminder in
                     store.addReminder(reminder)
                     refresh()
                 }
@@ -137,6 +140,12 @@ struct ContentView: View {
                 store.objectWillChange.send()
                 refresh()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .dutyPingVoiceCaptureRequested)) { _ in
+                consumeVoiceShortcut()
+            }
+            .onChange(of: showingQuickCapture) { isShown in
+                if !isShown { startVoiceCaptureAutomatically = false }
+            }
             .task(id: diagnostics.upcoming.first?.id) {
                 guard let next = diagnostics.upcoming.first else { return }
                 let delay = max(0, next.date.timeIntervalSinceNow + 0.2)
@@ -147,6 +156,7 @@ struct ContentView: View {
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
+                consumeVoiceShortcut()
                 _ = await Scheduler.shared.requestAuthorization()
                 await Scheduler.shared.waitUntilIdle()
                 await reloadDiagnostics()
@@ -564,6 +574,62 @@ struct ContentView: View {
         }
     }
 
+    private var smartAlertsCard: some View {
+        Card(title: "Smart alerts", icon: "bell.and.waves.left.and.right.fill") {
+            Label("Dynamic Island appears 10 minutes before the event", systemImage: "clock.badge.checkmark")
+                .font(.subheadline.weight(.medium))
+            Text("The countdown stays at zero after the deadline until you confirm. iOS controls the maximum Live Activity duration.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if #available(iOS 26.0, *) {
+                Text("Upcoming activities can start automatically while the app is closed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("On this iOS version, open the app within the final 10 minutes to start the Live Activity.")
+                    .font(.caption).foregroundStyle(Theme.warn)
+            }
+            Divider()
+            if AlarmController.shared.isSupported {
+                Toggle("Sound in Silent Mode", isOn: Binding(
+                    get: { store.settings.usesSilentModeAlarms },
+                    set: { enabled in
+                        Task {
+                            if enabled {
+                                store.settings.usesSilentModeAlarms = await AlarmController.shared.requestAuthorization()
+                            } else { store.settings.usesSilentModeAlarms = false }
+                            store.commit()
+                            refresh()
+                        }
+                    }))
+                    .tint(Theme.accent)
+                Text("One strong alarm at the deadline. Follow-ups stay as normal notifications. Haptics follow iPhone settings.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(AlarmController.shared.authorizationLabel)
+                    .font(.caption).foregroundStyle(.secondary)
+                if store.settings.usesSilentModeAlarms {
+                    Button {
+                        Task {
+                            await AlarmController.shared.sendTest()
+                            refresh()
+                        }
+                    } label: {
+                        Label("Test strong alarm in 10 seconds", systemImage: "alarm.fill")
+                    }
+                    .font(.subheadline)
+                }
+                Button("Open iPhone Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .font(.caption)
+            } else {
+                Text("Sound in Silent Mode requires iOS 26 or later.")
+                    .font(.caption).foregroundStyle(Theme.warn)
+            }
+        }
+    }
+
     private var locationCard: some View {
         Card(title: "Workplace", icon: "location") {
             Toggle(isOn: binding(\.geofenceEnabled)) {
@@ -727,6 +793,15 @@ struct ContentView: View {
 
     private func refresh() {
         Task { await reloadDiagnostics() }
+    }
+
+    private func consumeVoiceShortcut() {
+        guard VoiceShortcutRequest.consume() else { return }
+        editingReminder = nil
+        editingShift = nil
+        showingAssistantSettings = false
+        startVoiceCaptureAutomatically = true
+        showingQuickCapture = true
     }
 
     private func reloadDiagnostics() async {

@@ -265,6 +265,13 @@ struct Settings: Codable {
     /// Optional for backwards compatibility. Missing values adopt the safer
     /// confirmation-first behavior introduced in version 2.2.
     var persistentFollowUpsEnabled: Bool? = true
+    /// Optional to preserve existing settings files during upgrades.
+    var silentModeAlarmsEnabled: Bool?
+
+    var usesSilentModeAlarms: Bool {
+        get { silentModeAlarmsEnabled ?? false }
+        set { silentModeAlarmsEnabled = newValue }
+    }
 
     var persistentFollowUps: Bool {
         get { persistentFollowUpsEnabled ?? true }
