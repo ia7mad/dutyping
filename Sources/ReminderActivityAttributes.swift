@@ -7,7 +7,7 @@ struct ReminderActivityAttributes: ActivityAttributes {
         var dueDate: Date
         var isCompleted: Bool
         var repeatIntervalMinutes: Int
-        var startedAt: Date = Date()
+        var startedAt: Date? = nil
     }
 
     var seriesID: String

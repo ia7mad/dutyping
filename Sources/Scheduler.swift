@@ -132,13 +132,12 @@ final class Scheduler: ObservableObject {
         await scheduleHousekeeping(after: lastScheduledDate)
 
         // Remove delivered banners for deleted, disabled, or confirmed tasks.
-        let enabled = reminders.filter { $0.isEnabled && $0.hasSchedule }
         let delivered = await center.deliveredNotifications()
         let obsolete = delivered.filter { notification in
             guard let series = notification.request.content.userInfo["series"] as? String else { return false }
             if settings.isPaused || AcknowledgementStore.shared.contains(series) { return true }
             return series.hasPrefix("reminder-") &&
-                !enabled.contains { series.hasPrefix("reminder-\($0.id.uuidString)-") }
+                !reminders.contains { $0.ownsSeries(series) }
         }
         center.removeDeliveredNotifications(withIdentifiers: obsolete.map { $0.request.identifier })
         await LiveActivityManager.shared.syncToNextReminder(paused: settings.isPaused)
@@ -176,9 +175,8 @@ final class Scheduler: ObservableObject {
     private func scheduleHousekeeping(after lastFire: Date?) async {
         guard let lastFire else { return }
         let coverageEnd = min(lastFire, Date().addingTimeInterval(21 * 86400))
-        // Short queues need a warning too, before their final notification.
-        let warn = max(Date().addingTimeInterval(60), coverageEnd.addingTimeInterval(-2 * 86400))
-        guard warn < lastFire else { return }
+        let warn = coverageEnd.addingTimeInterval(-2 * 86400)
+        guard warn > Date() else { return }
         let content = UNMutableNotificationContent()
         content.title = "DutyPing"
         content.body = String(localized: "Open the app to extend your reminder schedule.")
@@ -228,7 +226,7 @@ final class Scheduler: ObservableObject {
         }.sorted { $0.date < $1.date }
         return Diagnostics(authorizationStatus: settings.authorizationStatus,
                            pendingCount: pending.count, upcoming: Array(upcoming.prefix(8)),
-                           error: lastError)
+                           error: lastError ?? LiveActivityManager.shared.lastError)
     }
 
     func sendTest(after seconds: TimeInterval = 10) {
@@ -239,7 +237,7 @@ final class Scheduler: ObservableObject {
             content.sound = .default
             // Test notifications deliberately have no task-completion buttons.
             do {
-                try await self.center.add(UNNotificationRequest(identifier: "test-\(UUID().uuidString)",
+                try await self.center.add(UNNotificationRequest(identifier: "test-diagnostic",
                     content: content,
                     trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)))
             } catch { self.lastError = error.localizedDescription }

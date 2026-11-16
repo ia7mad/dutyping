@@ -19,6 +19,7 @@ final class LiveActivityManager {
 
     func syncToNextReminder(paused: Bool = false) async {
         guard #available(iOS 16.2, *) else { return }
+        lastError = nil
         let current = Activity<ReminderActivityAttributes>.activities
         guard !paused, ActivityAuthorizationInfo().areActivitiesEnabled else {
             for activity in current { await activity.end(nil, dismissalPolicy: .immediate) }

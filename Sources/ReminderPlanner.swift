@@ -26,6 +26,8 @@ struct ReminderPlanner {
         var all = shiftOccurrences(shifts, settings: settings, now: start)
         for reminder in reminders where reminder.isEnabled && reminder.hasSchedule && !reminder.cleanTitle.isEmpty {
             for base in dates(for: reminder, settings: settings, now: start) {
+                let legacyMinute = Date(timeIntervalSince1970: floor(base.timeIntervalSince1970 / 60) * 60)
+                if reminder.repeatRule != .never && isCompleted(reminder.seriesID(for: legacyMinute)) { continue }
                 all += series(kind: .personal, title: reminder.cleanTitle,
                               body: reminder.notificationDetail,
                               followUpBody: String(format: String(localized: "Still waiting: %@"), reminder.cleanTitle),
@@ -104,7 +106,7 @@ struct ReminderPlanner {
             guard let day = calendar.date(byAdding: .day, value: offset, to: today),
                   let candidate = calendar.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0,
                                                 second: time.second ?? 0, of: day),
-                  candidate >= reminder.dueDate else { return nil }
+                  candidate >= Date(timeIntervalSince1970: floor(reminder.dueDate.timeIntervalSince1970)) else { return nil }
             switch reminder.repeatRule {
             case .never: return nil
             case .daily: return candidate

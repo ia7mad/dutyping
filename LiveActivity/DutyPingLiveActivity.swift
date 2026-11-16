@@ -124,7 +124,7 @@ struct DutyPingLiveActivity: Widget {
     }
 
     private func countdown(_ context: ActivityViewContext<ReminderActivityAttributes>) -> some View {
-        Text(timerInterval: min(context.state.startedAt, context.state.dueDate)...context.state.dueDate,
+        Text(timerInterval: min(context.state.startedAt ?? context.state.dueDate, context.state.dueDate)...context.state.dueDate,
              countsDown: true)
             .monospacedDigit()
             .multilineTextAlignment(.trailing)

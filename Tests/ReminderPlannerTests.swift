@@ -121,6 +121,30 @@ final class ReminderPlannerTests: XCTestCase {
         XCTAssertEqual(result.first?.fireDate, time(8, 1, 45))
     }
 
+    func testFirstRecurringOccurrenceIsNotLostToFractionalSeconds() {
+        var reminder = PersonalReminder(title: "Daily", dueDate: time(8, 1, 45).addingTimeInterval(0.5))
+        reminder.repeatRule = .daily
+        let result = planner().plan(shifts: [], reminders: [reminder], settings: Settings(), now: time(8))
+        XCTAssertEqual(result.first?.fireDate, time(8, 1, 45))
+    }
+
+    func testOldVersionRecurringConfirmationIsStillHonored() {
+        var reminder = PersonalReminder(title: "Daily", dueDate: time(8, 1, 45))
+        reminder.repeatRule = .daily
+        let oldSeries = reminder.seriesID(for: time(8, 1))
+        let result = planner(completed: [oldSeries]).plan(shifts: [], reminders: [reminder], settings: Settings(), now: time(8))
+        XCTAssertFalse(result.contains { $0.dueDate == time(8, 1, 45) })
+        XCTAssertFalse(result.isEmpty)
+    }
+
+    func testEditingDueDateInvalidatesPreviouslyDeliveredOccurrence() {
+        var reminder = PersonalReminder(title: "Moved", dueDate: time(8))
+        let original = reminder.seriesID(for: reminder.dueDate)
+        XCTAssertTrue(reminder.ownsSeries(original))
+        reminder.dueDate = time(9)
+        XCTAssertFalse(reminder.ownsSeries(original))
+    }
+
     func testExpiredPersistentOneTimeQueueRecoversOnReopen() {
         let reminder = PersonalReminder(title: "Overdue", dueDate: time(0))
         let reopenDate = time(23).addingTimeInterval(3 * 86400)

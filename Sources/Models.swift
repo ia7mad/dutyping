@@ -176,6 +176,25 @@ struct PersonalReminder: Codable, Identifiable, Hashable {
         repeatRule == .never && AcknowledgementStore.shared.contains(seriesID(for: dueDate))
     }
 
+    func ownsSeries(_ series: String, calendar: Calendar = .current) -> Bool {
+        let prefix = "reminder-\(id.uuidString)-"
+        guard isEnabled, hasSchedule, series.hasPrefix(prefix),
+              let stamp = TimeInterval(series.dropFirst(prefix.count)) else { return false }
+        if repeatRule == .never { return series == seriesID(for: dueDate) }
+        let date = Date(timeIntervalSince1970: stamp)
+        let anchor = Date(timeIntervalSince1970: floor(dueDate.timeIntervalSince1970 / 60) * 60)
+        guard date >= anchor,
+              calendar.component(.hour, from: date) == calendar.component(.hour, from: dueDate),
+              calendar.component(.minute, from: date) == calendar.component(.minute, from: dueDate) else { return false }
+        switch repeatRule {
+        case .never: return false
+        case .daily: return true
+        case .weekdays: return !calendar.isDateInWeekend(date)
+        case .weekly: return calendar.component(.weekday, from: date) == calendar.component(.weekday, from: dueDate)
+        case .monthly: return calendar.component(.day, from: date) == calendar.component(.day, from: dueDate)
+        }
+    }
+
     var hasSchedule: Bool {
         get { scheduleEnabled ?? true }
         set { scheduleEnabled = newValue }
