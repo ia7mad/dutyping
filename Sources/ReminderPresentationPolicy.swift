@@ -80,10 +80,11 @@ enum ReminderPresentationPolicy {
     /// Native repeats can fall between the sparse safety-tail notifications.
     /// Replace that series' nearest alert so the dashboard and fallback banner
     /// agree with the native alarm, without consuming another OS queue slot.
-    static func alignNotifications(_ occurrences: [Occurrence], alarms: [String: Date]) -> [Occurrence] {
+    static func alignNotifications(_ occurrences: [Occurrence], alarms: [String: Date], now: Date = Date()) -> [Occurrence] {
         var result = occurrences
         for (series, fireDate) in alarms {
-            guard !result.contains(where: { $0.seriesID == series && abs($0.fireDate.timeIntervalSince(fireDate)) < 1 }),
+            guard fireDate > now,
+                  !result.contains(where: { $0.seriesID == series && abs($0.fireDate.timeIntervalSince(fireDate)) < 1 }),
                   let index = result.firstIndex(where: { $0.seriesID == series }) else { continue }
             let original = result[index]
             let interval = Double(max(1, original.repeatIntervalMinutes)) * 60

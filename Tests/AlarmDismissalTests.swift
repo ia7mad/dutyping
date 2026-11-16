@@ -129,7 +129,7 @@ final class AlarmDismissalTests: XCTestCase {
     func testAlignmentPreservesQueueCapacityAndShowsActualStrongRepeat() throws {
         let tail = [event(16, minutes: 40), event(17, minutes: 60)]
         let fire = base.addingTimeInterval(32 * 60)
-        let aligned = ReminderPresentationPolicy.alignNotifications(tail, alarms: ["original": fire])
+        let aligned = ReminderPresentationPolicy.alignNotifications(tail, alarms: ["original": fire], now: base)
         XCTAssertEqual(aligned.count, tail.count)
         XCTAssertEqual(aligned.first?.fireDate, fire)
         XCTAssertEqual(aligned.first?.seriesID, "original")
@@ -143,7 +143,7 @@ final class AlarmDismissalTests: XCTestCase {
             fireDate: base.addingTimeInterval(180), dueDate: base.addingTimeInterval(180),
             seriesID: "other", nagIndex: 0, eventTitle: "Other", isImportant: false, repeatIntervalMinutes: 2)
         let aligned = ReminderPresentationPolicy.alignNotifications([event(16, minutes: 40), other],
-            alarms: ["original": base.addingTimeInterval(120)])
+            alarms: ["original": base.addingTimeInterval(120)], now: base)
         XCTAssertEqual(aligned.first(where: { $0.seriesID == "other" })?.fireDate, other.fireDate)
         XCTAssertEqual(aligned.count, 2)
     }
@@ -157,5 +157,13 @@ final class AlarmDismissalTests: XCTestCase {
             dueDate: legacy.dueDate, fireDate: legacy.dueDate, configurationVersion: 2)
         XCTAssertEqual(legacy.id, updated.id)
         XCTAssertNotEqual(legacy, updated)
+    }
+
+    func testAlreadyRingingAlarmCannotReplaceFutureNotificationWithAPastDate() {
+        let future = [event(1), event(2)]
+        let result = ReminderPresentationPolicy.alignNotifications(future, alarms: ["original": base],
+            now: base.addingTimeInterval(10))
+        XCTAssertEqual(result.map(\.fireDate), future.map(\.fireDate))
+        XCTAssertTrue(result.allSatisfy { $0.fireDate > base })
     }
 }
